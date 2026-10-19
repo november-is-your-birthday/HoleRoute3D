@@ -1,0 +1,23 @@
+# Electron 运行时（体积大、不参与修改）
+/*.exe
+/*.dll
+/*.pak
+/*.bin
+/*.dat
+/vk_swiftshader_icd.json
+/locales/
+/resources.pak
+LICENSE.electron.txt
+LICENSES.chromium.html
+
+# app.asar 及其全部备份/临时文件：由 build_asar.py 从 src/ 生成
+/resources/app.asar*
+
+# 运行时依赖：留在 asar 里，打包时从模板复制
+src/node_modules/
+
+# Python / 系统杂项
+__pycache__/
+*.pyc
+Thumbs.db
+desktop.ini
