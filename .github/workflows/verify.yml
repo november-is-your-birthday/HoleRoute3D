@@ -1,0 +1,30 @@
+name: verify
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  syntax-and-regression:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: 语法检查（两个 bundle）
+        run: |
+          node --check src/dist/assets/index-C0NrTOjn.js
+          node --check src/dist/assets/autoPlacement.worker-CtyuXT3o.js
+
+      - name: 独立连通性校验（不复用被改算法）
+        run: node harness/check.js --only=small-555
+
+      - name: 飞线层逻辑回归
+        run: node harness/rats-check.js
+
+      - name: 布线跑分（仅打印，不比较）
+        run: node harness/run.js --only=small-555

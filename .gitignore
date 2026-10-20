@@ -21,6 +21,15 @@ __pycache__/
 *.pyc
 Thumbs.db
 desktop.ini
+.DS_Store
+
+# 调试期间生成的 bundle 临时副本（chkA.mjs / chkB.mjs …）
+/chk*.mjs
 
 # 性能采样临时产物
 harness/prof/
+
+# 打包 / 备份临时文件
+*.tmp
+*.prev
+*.orig
