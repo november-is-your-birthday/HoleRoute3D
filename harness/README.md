@@ -71,6 +71,25 @@ node harness/rats-check.js
 
 任何一项不符即 exit code 1。
 
+## 补丁静态检查
+
+```bash
+node harness/lint-lc.js            # 检查两个 bundle 里的 __lc* 函数
+node harness/lint-lc.js --strict   # WARN 也算失败（CI 用这个）
+node harness/lint-lc.js path/to/bundle.js
+```
+
+minified bundle 里的两字母函数名在不同文件里含义完全不同。真实踩过的坑：`$e` 在 worker 中是
+「枚举路径边」，在主包里却是 React 的错误捕获函数；`ri` 在 worker 中是「拐弯计数」，在主包里是
+「快捷键描述对象」；`ni` 在主包里根本不存在。把 worker 的实现照搬到主包时，`node --check` 完全
+不会报错，运行时才抛异常，表现是**点了按钮没反应**（异常打断 React 的状态更新）。
+
+本脚本会：
+
+1. 收集目标文件里所有 `function` / `class` / `const` / `let` / `var` 声明（含解构）；
+2. 抽出每个 `function __lc…` 的函数体，屏蔽字符串与注释后扫描其中的函数调用；
+3. 名字找不到 → `ERROR`；名字存在但实参少于必填形参、或只以 `var` 声明在别处 → `WARN`。
+
 ## 消融实验
 
 ```bash

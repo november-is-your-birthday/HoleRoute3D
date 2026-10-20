@@ -479,6 +479,7 @@ python build_asar.py
 ### 8.3 离线回归（改算法必用）
 
 ```bash
+node harness/lint-lc.js --strict         # 补丁静态检查（同名不同义 / 参数不足）
 node harness/run.js                      # 5 个用例的指标
 node harness/run.js --compare            # 与基线对比
 node harness/run.js --save               # 覆盖基线

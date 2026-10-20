@@ -20,6 +20,9 @@ jobs:
           node --check src/dist/assets/index-C0NrTOjn.js
           node --check src/dist/assets/autoPlacement.worker-CtyuXT3o.js
 
+      - name: 补丁静态检查（同名不同义的标识符 / 参数不足）
+        run: node harness/lint-lc.js --strict
+
       - name: 独立连通性校验（不复用被改算法）
         run: node harness/check.js --only=small-555
 
