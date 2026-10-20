@@ -1,7 +1,7 @@
 {
   "name": "@perfboard-autoroute/web",
-  "version": "2.0.0",
-  "description": "A 3D perfboard component placement, routing, jumper planning, and DRC tool.",
+  "version": "3.0.0",
+  "description": "ProtoRoute 3D v3.0 中文增强版：洞洞板 3D 摆放 / 自动布线 / DRC（非官方修改版，支持嘉立创网表）",
   "author": "zhuohanjiang",
   "private": true,
   "type": "module",

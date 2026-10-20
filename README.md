@@ -2,17 +2,22 @@
   <img src="src/assets/image1.png" width="120" alt="ProtoRoute 3D">
 </p>
 
-<h1 align="center">ProtoRoute 3D 中文增强版</h1>
+<h1 align="center">ProtoRoute 3D 中文增强版 <sub>v3.0</sub></h1>
 
 <p align="center">
   <b>面向洞洞板 / 面包板的 3D 元件摆放 · 自动布线 · 焊接前检查工具</b><br>
+  <b>直接支持嘉立创 / 立创EDA 网表</b><br>
   <sub>非官方修改版（fork），基于 <a href="https://github.com/Tomjiang678/Perfboard-AutoRoute-3D-Windows">Tomjiang678/Perfboard-AutoRoute-3D-Windows</a> v2.0.0</sub>
 </p>
 
 <p align="center">
-  <img alt="platform" src="https://img.shields.io/badge/platform-Windows-0078D4">
+  <a href="https://github.com/november-is-your-birthday/ProtoRoute3D-CN/releases/latest"><img alt="download" src="https://img.shields.io/badge/download-v3.0.0-2ea043?style=for-the-badge"></a>
+  <img alt="platform" src="https://img.shields.io/badge/platform-Windows%20x64-0078D4">
   <img alt="base" src="https://img.shields.io/badge/upstream-v2.0.0-6b7280">
-  <img alt="license" src="https://img.shields.io/badge/license-MIT%20(own%20parts)-2ea043">
+</p>
+
+<p align="center">
+  <b>下载压缩包 → 解压 → 双击 <code>ProtoRoute 3D.exe</code></b>，免安装、无需 Python / Node / 运行时。
 </p>
 
 > ### ⚠️ 这是一个 fork，不是原创项目
@@ -47,7 +52,7 @@
 
 0. 界面预览
 1. 这个软件是干什么的
-2. 安装与启动
+2. 下载与安装（解压即用 / 源码构建）
 3. 界面导览（含全部按钮速查）
 4. 完整使用流程（一步一步）
 5. 与原作者版本（上游 v2.0.0）的差异
@@ -76,31 +81,33 @@ ProtoRoute 3D 把「原理图导出的网表」变成一块可以自由旋转的
 
 ---
 
-## 2. 安装与启动
+## 2. 下载与安装
 
-仓库**不包含** Electron 运行时（exe / dll / pak / locales）、`node_modules` 和打包产物 `app.asar`——
-这些体积大、且属于上游发行物。正确用法是「拿官方包打补丁」。
+### 2.1 普通用户：下载 Release，解压即用（推荐）
 
-### 2.1 准备官方 v2.0.0
+1. 打开 **[Releases](https://github.com/november-is-your-birthday/ProtoRoute3D-CN/releases/latest)** 页面；
+2. 下载 `ProtoRoute3D-v3.0.0-cn-win-x64.zip`（约 130 MB）；
+3. **完整解压**到任意目录，例如 `D:\ProtoRoute3D`；
+4. 双击其中的 `ProtoRoute 3D.exe`。
 
-1. 打开 [上游 Release v2.0.0](https://github.com/Tomjiang678/Perfboard-AutoRoute-3D-Windows/releases/tag/v2.0.0)；
-2. 下载 `perfboard_autorouting_3d_v2.0.0.zip`；
-3. **完整解压**到任意目录，例如 `D:\ProtoRoute3D`。
+包里已经带了完整的 Electron 运行时、依赖和打好补丁的 `app.asar`，
+**不需要安装 Python / Node，也不需要再下载上游版本打补丁**。
 
-> 必须完整解压。程序依赖同目录下的 `*.dll`、`*.pak`、`locales\`、`resources\`，只复制 exe 是跑不起来的。
+- 窗口标题显示 **ProtoRoute 3D v3.0** 就说明版本正确；
+- 首次运行 Windows 可能弹「已保护你的电脑」，点「更多信息 → 仍要运行」即可（本版没有代码签名）；
+- 解压目录里有一份 `使用说明.txt`，包含嘉立创导出步骤、基本流程与快捷键。
 
-### 2.2 覆盖本仓库的源码
+> 必须解压**整个目录**。程序依赖同目录的 `*.dll`、`*.pak`、`locales\`、`resources\`，只复制 exe 跑不起来。
 
-把下面这些复制进解压目录（覆盖同名文件）：
+### 2.2 开发者：从源码构建
 
-```
-src\            修改后的应用源码（约 2.7 MB）
-build_asar.py   打包脚本（Python 3.8+，无第三方依赖）
-tools\          还原官方原版的脚本（可选）
-harness\        离线回归工具（可选，只有改算法时才用）
-```
+仓库里只有被修改过的源码（`src/`，约 2.7 MB）与构建脚本，**不含** 300 MB 的 Electron 运行时，
+所以需要先拿一份官方 v2.0.0 作为「运行时底座」：
 
-### 2.3 打包
+1. 从 [上游 Release v2.0.0](https://github.com/Tomjiang678/Perfboard-AutoRoute-3D-Windows/releases/tag/v2.0.0)
+   下载 `perfboard_autorouting_3d_v2.0.0.zip`，完整解压；
+2. 把本仓库的 `src\`、`build_asar.py`、`tools\`、`harness\` 复制进去（覆盖同名文件）；
+3. 打包并启动：
 
 ```bash
 cd D:\ProtoRoute3D
@@ -108,17 +115,22 @@ python build_asar.py --check   # 先看会改哪些文件，不写盘
 python build_asar.py           # 正式打包，旧包自动备份为 app.asar.prev
 ```
 
-看到「内容有变化：2」之类就说明生效了。第一次打包前建议把官方 `resources\app.asar`
-复制一份为 `app.asar.orig`，以后能一键还原。
-
-### 2.4 启动
-
-双击 `ProtoRoute 3D.exe`。
+4. 双击 `ProtoRoute 3D.exe`。
 
 > **每次打包后必须完全退出软件再启动。** Electron 只在进程启动时读一次 `app.asar`，
 > 关掉窗口但进程还在托盘里时，看到的仍是旧版本。
 
-### 2.5 还原官方原版
+### 2.3 自己打一个可发布的完整包
+
+```bash
+python tools/make_release.py --check   # 统计会打包哪些文件
+python tools/make_release.py           # 生成 release/ProtoRoute3D-v3.0.0-cn-win-x64.zip
+```
+
+脚本只收运行本体（exe / dll / pak / locales / resources/app.asar 等）+ `docs/使用说明.txt`，
+自动排除 `src/`、`harness/`、`.git` 以及 `resources/` 下的 asar 备份；解压后是一个独立目录。
+
+### 2.4 还原官方原版（仅源码方式需要）
 
 - 有备份：运行 `tools\restore_official.bat`；
 - 没备份：重新从官方 zip 里取 `resources\app.asar` 覆盖回去。
@@ -209,7 +221,7 @@ python build_asar.py           # 正式打包，旧包自动备份为 app.asar.p
 
 ### 4.2 导入网表
 
-把网表文件**拖进左侧栏「导入」区域**，或点它选择文件。支持的格式：
+把网表文件**拖进左侧栏「导入」区域**，或点该区域选择文件。支持的格式：
 
 | 来源 | 导出方式 | 说明 |
 |---|---|---|
@@ -231,6 +243,34 @@ python build_asar.py           # 正式打包，旧包自动备份为 app.asar.p
 
 > 嘉立创网表通常不带库字段（`libsource`）。本版会按位号前缀（R / C / D / Q / U / J …）
 > 推断类别，所以大多数阻容、二极管、三极管能直接识别；特殊封装仍需手工确认。
+
+#### 4.2.1 从嘉立创 EDA 导出网表（本版新增支持）
+
+不需要任何外部转换工具，嘉立创导出的 `.net` 拖进来即可。
+
+**嘉立创 EDA 专业版**
+
+1. 打开要做的原理图；
+2. 顶部菜单 **文件 → 导出 → 网表**；
+3. 格式选 **Protel2 / Protel 99SE**，文件名后缀 `.net`；
+4. 导出完成后，把 `.net` 文件拖进软件左侧「导入」区域。
+
+**嘉立创 EDA 标准版（旧版）**
+
+**文件 → 导出 → 网表 Netlist**，格式选 **Protel**，其余同上。
+
+**关于格式**
+
+- 软件靠文件头 `PROTEL NETLIST` 识别，这类文件会在内存里转成 KiCad S-expression 再解析；
+- 导出 **KiCad 格式**的 `.net` 也能直接导入；
+- 不需要导出 BOM：软件只用网表里的位号、引脚与网络关系；
+- 不需要手动改文件内容或另存编码。
+
+**导入后先核对三件事**
+
+1. 左侧「导入结果 → 元件」里，元件数与原理图是否一致；
+2. 「网络」里的网络数量与名称是否合理（GND / VCC 等是否都在）；
+3. 有没有「库中无对应封装」的提示——有就按上一节的办法在属性面板改脚距。
 
 ### 4.3 摆放元件
 
@@ -381,7 +421,8 @@ python build_asar.py           # 正式打包，旧包自动备份为 app.asar.p
 | **自动布线** | 5 轮 + 有限拆线重布 | 增加 **pull-tight 后优化**（逐段拆开重布，更优才保留）→ 拐弯 −2~3 |
 | **继续布线** | 无此功能；「自动布线」会重算全部网络，上一轮结果被覆盖 | 新增「继续布线」：保留全部已有走锡/跳线，只补未连通网络，并按全量引脚重算 DRC |
 | **工程工具** | 无 | `build_asar.py` 打包脚本、`harness/` 离线回归（基准/消融/独立校验/飞线回归）、GitHub Actions |
-| **文档** | 一份 README | README + CHANGELOG + NOTICE + 分发与许可说明 |
+| **分发形态** | 只有源码仓库，用户需自行构建；无现成安装包 | 提供 **v3.0.0 免安装压缩包**（含 Electron 运行时），下载解压双击即用 |
+| **文档** | 一份 README | README + CHANGELOG + NOTICE + 使用说明.txt + Release 说明 |
 
 ### 5.2 我没有改的部分
 
@@ -490,9 +531,12 @@ src/                                    唯一需要编辑的源码（约 2.7 MB
   dist/index.html
   electron/main.cjs, preload.cjs        Electron 主进程
 build_asar.py                           把 src/ 打包回 resources/app.asar
+tools/make_release.py                   打「解压即用」的完整发布包（release/*.zip）
 tools/restore_official.bat              还原官方原版
 harness/                                离线回归（Node 运行，不需要启动 GUI）
 .github/workflows/verify.yml            CI：语法检查 + 快速回归
+docs/使用说明.txt                        随发布包分发给最终用户的上手说明
+docs/release-v3.0.0.md                  GitHub Release 页面文案
 docs/screenshots/                       README 用的界面截图
 ```
 
