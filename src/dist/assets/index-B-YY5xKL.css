@@ -45,3 +45,8 @@
 .sidebar .lc-color-reset{width:100%;height:24px}
 .icon-button.active{background:var(--ui-accent-soft,#e8f0ff);color:var(--ui-accent,#235bdb)}
 
+
+/* lc drc panel */
+.drc-ok{margin:4px 0 0;color:#2f6b3d;font-size:12px}
+:root[data-theme=dark] .drc-ok{color:#7fd39b}
+
