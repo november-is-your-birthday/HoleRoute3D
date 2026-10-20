@@ -40,6 +40,19 @@ node harness/run.js --save                   # 覆盖 baseline.json
 
 自动放置较慢是当前实现本身的特点（每个候选都要完整布一次线），不是 harness 的开销。
 
+## 独立校验器
+
+```bash
+node harness/check.js              # 校验全部 fixture
+node harness/check.js --only=dense-mixed
+```
+
+`check.js` 不调用任何被改动的算法代码，只用「板 + 引脚 + 走锡/跳线」重建一层并查集，
+独立判断四件事：同一网络的引脚是否真的连通、不同网络是否被铜连成一片、走锡有没有斜线段、有没有跑到板外。
+任何一项非 0 即 exit code 1，可当回归门禁。
+
+2026-10-20 实测：5 个 fixture 全部 0 未连通 / 0 短路 / 0 斜线 / 0 出板。
+
 ## 消融实验
 
 ```bash
