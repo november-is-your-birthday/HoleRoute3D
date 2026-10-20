@@ -1,4 +1,4 @@
-# ProtoRoute 3D v3.0 中文增强版
+# 洞洞板布线 HoleRoute3D v3.0
 
 > 洞洞板 / 万能板的 3D 元件摆放、反面走锡、跳线规划与 DRC 检查工具。
 > 本版基于 [Tomjiang678/Perfboard-AutoRoute-3D-Windows](https://github.com/Tomjiang678/Perfboard-AutoRoute-3D-Windows) v2.0.0 二次开发，**非官方修改版**。
@@ -6,13 +6,14 @@
 ## 下载与安装（Windows x64，免安装）
 
 1. 下载本页下方的 `ProtoRoute3D-v3.0.0-cn-win-x64.zip`（约 130 MB）；
-2. **完整解压**到任意目录，例如 `D:\ProtoRoute3D`；
+2. **完整解压**到任意目录，例如 `D:\HoleRoute3D`；
 3. 双击 `ProtoRoute 3D.exe` 即可，不需要装 Python / Node / 任何运行时。
 
 > 务必解压整个目录，不要只把 exe 复制出来——程序依赖同目录的 dll、pak、locales 与 resources。
 > 首次运行 Windows 可能提示「已保护你的电脑」，点「更多信息 → 仍要运行」即可（本版无代码签名）。
 
 窗口标题显示 **ProtoRoute 3D v3.0** 表示版本正确。
+（v3.0 的程序文件、压缩包名沿用上游内部命名，项目名以「洞洞板布线 HoleRoute3D」为准，后续版本统一。）
 
 ## 本版重点
 
