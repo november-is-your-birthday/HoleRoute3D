@@ -60,11 +60,13 @@ node harness/rats-check.js
 ```
 
 从 bundle 里抽出 `__lcRats*` 源码，用 three 的 mock（Group / Vector3 / BufferGeometry / LineSegments / LineBasicMaterial）
-在 `vm` 中执行 `__lcRatsRebuild()`，校验四件事：
+在 `vm` 中执行 `__lcRatsRebuild()`，校验：
 
-- 每个网络生成的线段数 = 该网络去重孔位数 − 1（MST 性质）；
+- 飞线按**铜的实际连通性**判定：走锡（`traces`）相邻点、跳线（`jumpers`）两端并入同一并查集连通块，
+  同一块内的引脚只算一个节点 → 已被连起来的引脚不再画飞线；
+- 每个网络生成的线段数 = 该网络（连通块去重后）节点数 − 1；
 - 未放置（`mounted` 为假）的元件不参与飞线；
-- DRC 判定全部 `CONNECTED` 的网络不再画飞线；
+- 走锡的 `net` 名与网表不一致（手动走锡未选网络）时，仍按物理连通判定；
 - 线段落在 `y = -0.62`（板背面外侧），x/z 与焊盘坐标一致。
 
 任何一项不符即 exit code 1。
