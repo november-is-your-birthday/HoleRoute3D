@@ -21,3 +21,6 @@ __pycache__/
 *.pyc
 Thumbs.db
 desktop.ini
+
+# 性能采样临时产物
+harness/prof/
