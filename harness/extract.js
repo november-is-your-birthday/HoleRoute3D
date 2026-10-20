@@ -11,7 +11,11 @@ const WORKER = path.resolve(__dirname, '..', 'src', 'dist', 'assets', 'autoPlace
 const EXPORTS = ['pn', 'wn', 'hi', 'gi', 'q', 'Pn', 'lt', 'dt', 'Kn', 'mn', 'A', 'Dt'];
 
 function loadWorker(workerPath = WORKER) {
-  const src = fs.readFileSync(workerPath, 'utf8');
+  return loadWorkerSource(fs.readFileSync(workerPath, 'utf8'), workerPath);
+}
+
+// 直接载入一段 worker 源码（消融实验用：先对源码做开关变换，再执行）
+function loadWorkerSource(src, label = '<inline>') {
   const anchor = 'self.onmessage=';
   if (src.indexOf(anchor) < 0) throw new Error('worker 结构变化：找不到 self.onmessage 锚点');
   const hook = 'self.__H={' + EXPORTS.join(',') + '};';
@@ -26,7 +30,7 @@ function loadWorker(workerPath = WORKER) {
     clearTimeout: undefined,
   };
   vm.createContext(sandbox);
-  vm.runInContext(patched, sandbox, { filename: workerPath });
+  vm.runInContext(patched, sandbox, { filename: label });
 
   const api = sandbox.self.__H;
   if (!api) throw new Error('worker 内部导出失败');
@@ -35,4 +39,4 @@ function loadWorker(workerPath = WORKER) {
   return { api, patchedSource: patched, source: src };
 }
 
-module.exports = { loadWorker, WORKER, EXPORTS };
+module.exports = { loadWorker, loadWorkerSource, WORKER, EXPORTS };

@@ -40,8 +40,20 @@ node harness/run.js --save                   # 覆盖 baseline.json
 
 自动放置较慢是当前实现本身的特点（每个候选都要完整布一次线），不是 harness 的开销。
 
+## 消融实验
+
+```bash
+node harness/ablate.js
+```
+
+在内存里分别关掉某一项改动（对 worker 源码做文本还原），逐个跑三个布线用例，用来看
+「这项改动到底贡献了多少」。锚点不存在的变体会自动跳过（说明该项已被回滚）。
+
+2026-10-20 的实测结论：网络排序、拆线加码两项贡献恒为 0（关掉后所有指标一模一样），已回滚；
+只有 pull-tight 有效，把 medium 的拐弯 29→26、dense 77→75，代价是 dense 布线耗时 108→~200ms。
+
 ## 注意
 
 - 主包 `Y4()` 与 worker `pn()` 是**两份同构实现**，改算法必须两处同步，否则放置评估与实际布线会不一致。
-- `baseline.p0.json` 是 P1 改动之前的存档，用于回溯；`baseline.json` 是当前基准。
+- `baseline.p0.json` / `p1` / `p3` 是各阶段的存档，用于回溯；`baseline.json` 是当前基准。
 - 打包前请确认 `node --check` 两个 bundle 都通过。
