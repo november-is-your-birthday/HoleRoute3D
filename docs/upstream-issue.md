@@ -4,8 +4,8 @@
 
 我在你的 **v2.0.0** 基础上做了一个个人向的中文增强版，按惯例在这里留个记录，避免日后有人误以为是原创项目：
 
-- 仓库：https://github.com/november-is-your-birthday/ProtoRoute3D-CN
-- Release（免安装完整包）：https://github.com/november-is-your-birthday/ProtoRoute3D-CN/releases/tag/v3.0.0
+- 仓库：https://github.com/november-is-your-birthday/HoleRoute3D （中文名「洞洞板布线」）
+- Release（免安装完整包）：https://github.com/november-is-your-birthday/HoleRoute3D/releases/tag/v3.0.0
 - 定位说明：README 顶部已明确写「非官方修改版（fork），基于 Tomjiang678/Perfboard-AutoRoute-3D-Windows v2.0.0」，并逐条列出改动。
 
 ## 我改了什么

@@ -1,17 +1,17 @@
 <p align="center">
-  <img src="src/assets/image1.png" width="120" alt="ProtoRoute 3D">
+  <img src="src/assets/image1.png" width="120" alt="HoleRoute3D">
 </p>
 
-<h1 align="center">ProtoRoute 3D 中文增强版 <sub>v3.0</sub></h1>
+<h1 align="center">洞洞板布线 <sub>HoleRoute3D v3.0</sub></h1>
 
 <p align="center">
-  <b>面向洞洞板 / 面包板的 3D 元件摆放 · 自动布线 · 焊接前检查工具</b><br>
-  <b>直接支持嘉立创 / 立创EDA 网表</b><br>
+  <b>洞洞板 / 万能板的 3D 元件摆放 · 自动布线 · 焊接前检查</b><br>
+  <b>直接支持嘉立创 / 立创EDA 网表，中文界面，解压即用</b><br>
   <sub>非官方修改版（fork），基于 <a href="https://github.com/Tomjiang678/Perfboard-AutoRoute-3D-Windows">Tomjiang678/Perfboard-AutoRoute-3D-Windows</a> v2.0.0</sub>
 </p>
 
 <p align="center">
-  <a href="https://github.com/november-is-your-birthday/ProtoRoute3D-CN/releases/latest"><img alt="download" src="https://img.shields.io/badge/download-v3.0.0-2ea043?style=for-the-badge"></a>
+  <a href="https://github.com/november-is-your-birthday/HoleRoute3D/releases/latest"><img alt="download" src="https://img.shields.io/badge/download-v3.0.0-2ea043?style=for-the-badge"></a>
   <img alt="platform" src="https://img.shields.io/badge/platform-Windows%20x64-0078D4">
   <img alt="base" src="https://img.shields.io/badge/upstream-v2.0.0-6b7280">
 </p>
@@ -72,7 +72,7 @@
 - 哪两个孔不能共用、哪段锡会和别的网络短路；
 - 手上这块板到底放不放得下。
 
-ProtoRoute 3D 把「原理图导出的网表」变成一块可以自由旋转的 3D 洞洞板，让你**在动烙铁之前先在电脑里焊一遍**：
+洞洞板布线（HoleRoute3D）把「原理图导出的网表」变成一块可以自由旋转的 3D 洞洞板，让你**在动烙铁之前先在电脑里焊一遍**：
 元件按封装吸附到孔位，走锡与跳线可以自动生成也可以手工调整，DRC 检查连通性，最后给你一份可以照着做的布线图。
 
 **适合**：模块板、转接板、教学实验、几十个元件以内的小电路、焊接前的走线预演。
@@ -85,15 +85,16 @@ ProtoRoute 3D 把「原理图导出的网表」变成一块可以自由旋转的
 
 ### 2.1 普通用户：下载 Release，解压即用（推荐）
 
-1. 打开 **[Releases](https://github.com/november-is-your-birthday/ProtoRoute3D-CN/releases/latest)** 页面；
+1. 打开 **[Releases](https://github.com/november-is-your-birthday/HoleRoute3D/releases/latest)** 页面；
 2. 下载 `ProtoRoute3D-v3.0.0-cn-win-x64.zip`（约 130 MB）；
-3. **完整解压**到任意目录，例如 `D:\ProtoRoute3D`；
+3. **完整解压**到任意目录，例如 `D:\HoleRoute3D`；
 4. 双击其中的 `ProtoRoute 3D.exe`。
 
 包里已经带了完整的 Electron 运行时、依赖和打好补丁的 `app.asar`，
 **不需要安装 Python / Node，也不需要再下载上游版本打补丁**。
 
-- 窗口标题显示 **ProtoRoute 3D v3.0** 就说明版本正确；
+- 窗口标题显示 **ProtoRoute 3D v3.0** 就说明版本正确（v3.0 的程序文件沿用原内部名，
+  仓库与文档统一叫「洞洞板布线 HoleRoute3D」，后续版本再一并改名）；
 - 首次运行 Windows 可能弹「已保护你的电脑」，点「更多信息 → 仍要运行」即可（本版没有代码签名）；
 - 解压目录里有一份 `使用说明.txt`，包含嘉立创导出步骤、基本流程与快捷键。
 
