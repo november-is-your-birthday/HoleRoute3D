@@ -36,3 +36,12 @@
 :root[data-theme=dark] .toolbar-group-label,:root[data-theme=dark] .lc-color span{color:#9aa7b4}
 :root[data-theme=dark] .lc-expand{color:#9aa7b4}
 
+
+/* lc sidebar color panel */
+.sidebar .lc-color-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin-top:4px;align-items:end}
+.sidebar .lc-color{width:100%;align-items:stretch}
+.sidebar .lc-color input{width:100%;height:24px}
+.sidebar .lc-color span{font-size:10px;margin-top:2px;text-align:center}
+.sidebar .lc-color-reset{width:100%;height:24px}
+.icon-button.active{background:var(--ui-accent-soft,#e8f0ff);color:var(--ui-accent,#235bdb)}
+
