@@ -53,6 +53,22 @@ node harness/check.js --only=dense-mixed
 
 2026-10-20 实测：5 个 fixture 全部 0 未连通 / 0 短路 / 0 斜线 / 0 出板。
 
+## 飞线层回归
+
+```bash
+node harness/rats-check.js
+```
+
+从 bundle 里抽出 `__lcRats*` 源码，用 three 的 mock（Group / Vector3 / BufferGeometry / LineSegments / LineBasicMaterial）
+在 `vm` 中执行 `__lcRatsRebuild()`，校验四件事：
+
+- 每个网络生成的线段数 = 该网络去重孔位数 − 1（MST 性质）；
+- 未放置（`mounted` 为假）的元件不参与飞线；
+- DRC 判定全部 `CONNECTED` 的网络不再画飞线；
+- 线段落在 `y = -0.62`（板背面外侧），x/z 与焊盘坐标一致。
+
+任何一项不符即 exit code 1。
+
 ## 消融实验
 
 ```bash
