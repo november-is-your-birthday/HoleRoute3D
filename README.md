@@ -229,6 +229,12 @@ python tools/make_release.py           # 生成 release/ProtoRoute3D-v3.0.0-cn-w
 | **KiCad**（Eeschema） | 文件 → 导出 → 网表，格式选 **KiCad 网表**（`.net`） | 原生支持，S-expression |
 | **嘉立创 EDA / 立创EDA** | 导出 → 网表，格式选 **Protel / Protel2**（`.net`） | 本版新增：自动识别 `PROTEL NETLIST` 文件头并在内存里转成 KiCad 格式 |
 | 其它能出 Protel2 的软件 | 同上 | 同理 |
+| **NI Multisim** | Tools → Reports → **Wire List** 与 **Cross Reference**，存 `.txt` / `.csv`，**两份一起拖入** | v3.2 新增：报告表格解析（上游 v1.0 格式规范 + 增强）；见下节 |
+
+**Multisim 导入要点（v3.2）**：连线表生成网络、交叉引用报告生成元件，两份报告缺一不可、
+建议同时拖入（软件先读引脚再配元件）；电源 / 地符号自动忽略，U1A/U1B 多单元自动归并，
+A/K、C/B/E 等字母引脚自动重编号；DIP 脚数按封装名（DIP8 等）提取。`.cir`（SPICE）不支持——
+SPICE 网表不含引脚号，请用 Reports 菜单导出。格式细节见 `docs/使用说明.txt` 第二节之二。
 
 导入后，侧栏「导入结果」会显示：
 
@@ -509,7 +515,7 @@ python tools/make_release.py           # 生成 release/ProtoRoute3D-v3.0.0-cn-w
 **已知限制**
 
 - 只支持洞洞板 / 面包板，**没有过孔与多层**；
-- 只支持 KiCad 网表与 Protel2 网表两种格式；
+- 网表支持 KiCad / Protel2（嘉立创）/ Multisim 报告（Wire List + Cross Reference，v3.2）三种来源；SPICE（.cir）不支持；
 - 元件库 23 类（电阻、瓷片/电解电容、电感、二极管、LED、电位器、TO-92/220/247/TO-3、
   桥堆、继电器、晶振、保险丝、DIP、拨动开关、拨码开关、数码管、排针、接线端子、蜂鸣器、轻触开关），
   不认识的封装退化为排针；
