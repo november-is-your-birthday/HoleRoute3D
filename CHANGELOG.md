@@ -7,6 +7,29 @@
 
 ---
 
+## [3.2.0] — 2026-11-02
+
+### 新增
+
+**Multisim 报告导入（合并上游 v1.0 核心并增强）**
+- 支持 NI Multisim 的 **Wire List（连线表）+ Cross Reference（交叉引用报告）** 双报告导入：
+  拖入 `.txt` / `.csv` 报告即可生成元件与网络，不需要原理图网表。
+- 格式嗅探器：`PROTEL NETLIST` 头 → 嘉立创通道；`(export` → KiCad；
+  表格特征（`RefDes` 表头 / 多空格分列）→ Multisim 报告；其余文本给出明确警告。
+- Multisim 词表 → 类别识别桥接：RESISTOR / CAP（含电解判据）/ INDUCTOR / DIODE / LED /
+  BJT / TRANSISTOR / TIMER / IC / BUZZER / RELAY / SWITCH / DIPSW / SEVEN_SEG / HEADERS 等
+  映射到内置元件库；封装名（DIP8 / DIP14 …）自动提取 DIP 脚数。
+- 相对上游 v1.0 的增强：CSV 引号分列、`U1A/U1B` 多单元归并、末两列取 `RefDes/Pin`
+  容忍列序差异、非数字引脚（A/K、C/B/E）自动重编号、`K` 位号（继电器）白名单、
+  只导连线表缺元件报告时给出明确提示。
+- 导入区拖放卡片扩展为「网表 / Multisim 报告」（`.net / .txt / .csv / .cir`）；
+  `.cir`（SPICE）不支持并给出原因说明（SPICE 网表不含引脚号）。
+
+### 参考
+
+- 上游 v1.0.0 发布包（`perfboard_autorouting_3d_v1.0.0.zip`）中的报告解析行为
+  作为格式规范来源与对拍基准（`oracle` 对拍，nets/元件集合一致）。
+
 ## [3.0.0] — 2026-10-20
 
 首个对外发布的完整版本。基线：上游 `v2.0.0`（`perfboard_autorouting_3d_v2.0.0.zip`）。

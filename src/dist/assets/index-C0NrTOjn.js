@@ -420,6 +420,7 @@ function __lcMSWireParse(text,name){
     if(f[0].toUpperCase()==="REFDES")continue;
     var net=f[0],ref=f[f.length-2],pin=f[f.length-1];
     if(!net||!ref||!pin)continue;
+    if(ref.toUpperCase()==="REFDES"||/^PIN[#\d\s]*$/.test(pin.toUpperCase()))continue;
     if(/_uc/i.test(net)||net.toLowerCase()==="net")continue;
     if(!__lcMSRefOk(ref))continue;
     ref=__lcMSFoldRef(ref);
@@ -473,6 +474,8 @@ function __lcSniff(text){
   if(/^\s*PROTEL\s+NETLIST/i.test(s))return"protel";
   if(/^\s*\(export\b/.test(s))return"kicad";
   var lines=s.split(/\r?\n/),wireish=0,xrefish=0,checked=0;
+  var refLike=function(x){return/^[A-Z]{1,4}\d+[A-Z]?$/.test(String(x).toUpperCase())};
+  var pinLike=function(x){return/^\d{1,3}$|^[A-Z]{1,2}$/.test(String(x).toUpperCase())};
   for(var i=0;i<lines.length&&checked<80;i+=1){
     var l=lines[i];
     if(!l.trim()||__lcMSIsSep(l))continue;
@@ -481,14 +484,15 @@ function __lcSniff(text){
     var f=__lcMSSplit2(l);
     if(f.length<3){if(__lcMSSplitCsv(l).length>=3)f=__lcMSSplitCsv(l);else continue}
     var head=f.join(" ").toUpperCase();
-    if(f[0].toUpperCase()==="REFDES"||head.indexOf("REFDES")>=0){
-      if(f.length>=4)wireish+=1;else xrefish+=1;
+    if(head.indexOf("REFDES")>=0){
+      if(f[0].toUpperCase()==="REFDES")xrefish+=1;else wireish+=1;
       continue;
     }
-    if(f.length>=4&&/^[A-Za-z]/.test(f[0]))wireish+=1;
-    else if(f.length===3&&/^[A-Za-z]/.test(f[0]))xrefish+=1;
+    if(f.length<3)continue;
+    if(refLike(f[f.length-2])&&pinLike(f[f.length-1]))wireish+=1;
+    else if(refLike(f[0]))xrefish+=1;
   }
-  if(wireish>xrefish&&wireish>0)return"mswire";
+  if(wireish>=xrefish&&wireish>0)return"mswire";
   if(xrefish>0)return"msxref";
   if(/(?:^|\n)\s*[.*/]/.test(s)&&/(?:^|\n)\s*[RCLDQXUIVEF]\w*\s+\S+\s+\S+/.test(s))return"spice";
   return"text";
