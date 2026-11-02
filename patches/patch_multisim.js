@@ -228,8 +228,10 @@ function __lcMSBuild(wireResults,xrefResults){
     var pkgN=__lcMSPkgPins(cp.pkg,pre);
     var cset=cache.get(cp.ref);
     var cacheN=cset&&cset.size>0?cset.size:void 0;
+    var maxNum=0;
+    if(cset)cset.forEach(function(pp){if(/^\d+$/.test(pp)){var vv=Number(pp);if(vv>maxNum)maxNum=vv}});
     var def=__lcMSDefPins[cat]!==void 0?__lcMSDefPins[cat]:2;
-    var n=Math.max(pkgN||0,cacheN||0,def);
+    var n=Math.max(pkgN||0,cacheN||0,def,maxNum||0);
     renum.set(cp.ref,__lcMSRenumber(cset||new Set,pkgN===void 0,n));
     var base=cat;
     var part;
