@@ -1,0 +1,4 @@
+RefDes  Value  Category  Package
+D1  1N4148  DIODE  DO-35
+Q1  2N3904  TRANSISTOR  TO-92
+R1  10k  RESISTOR  RESISTOR

@@ -1,0 +1,4 @@
+Net Name Color RefDes Pin
+------------------------
+VCC U1 8
+GND U1 1

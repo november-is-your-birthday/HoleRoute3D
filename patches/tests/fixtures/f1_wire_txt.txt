@@ -1,0 +1,12 @@
+Net Name  Color  RefDes  Pin
+VCC  -  U1  8
+VCC  -  R1  1
+net  -  R2  2
+N002_uc  -  R3  3
+GND  -  U1  1
+--------------------
+
+VCC  -  U1  8
+NC  -  TP1
+SIG	-	TP2	1
+N003  -  U1  5

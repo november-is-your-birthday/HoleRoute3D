@@ -1,0 +1,6 @@
+Net Name  Color  RefDes  Pin
+N001  -  D1  A
+N002  -  D1  K
+N003  -  Q1  B
+N004  -  Q1  C
+N005  -  Q1  E

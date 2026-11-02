@@ -1,0 +1,7 @@
+Net Name  Color  RefDes  Pin
+VCC  -  U1A  14
+VCC  -  U1B  14
+GND  -  U1A  7
+GND  -  U1B  7
+SIG  -  U1A  1
+SIG  -  U1B  5
