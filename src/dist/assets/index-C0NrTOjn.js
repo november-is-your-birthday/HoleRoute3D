@@ -427,7 +427,9 @@ function __lcMSWireParse(text,name){
     pin=pin.toUpperCase().replace(/\s+/g,"");
     var arr=nets.get(net);
     if(!arr){arr=[];nets.set(net,arr)}
-    arr.push({ref:ref,pin:pin});
+    var dup=!1;
+    for(var d=0;d<arr.length;d+=1)if(arr[d].ref===ref&&arr[d].pin===pin){dup=!0;break}
+    if(!dup)arr.push({ref:ref,pin:pin});
     var set=refs.get(ref);
     if(!set){set=new Set();refs.set(ref,set)}
     set.add(pin);
@@ -435,15 +437,29 @@ function __lcMSWireParse(text,name){
   }
   return{nets:nets,refs:refs,rows:rows,name:name};
 }
-function __lcMSRenumber(set){
+function __lcMSRenumber(set,compress,n){
   var pins=Array.from(set);
+  var map=new Map;
+  if(compress){
+    pins.sort(function(a,b){
+      var x=/^P?(\d+)$/.test(a)?Number(a.replace(/^P/,"")):void 0;
+      var y=/^P?(\d+)$/.test(b)?Number(b.replace(/^P/,"")):void 0;
+      if(x!==void 0&&y!==void 0)return x-y;
+      if(x!==void 0)return-1;
+      if(y!==void 0)return 1;
+      return a.localeCompare(b,void 0,{numeric:!0});
+    });
+    pins.forEach(function(p,i){map.set(p,i+1)});
+    return map;
+  }
   var nums=[],words=[];
   pins.forEach(function(p){if(/^\d+$/.test(p))nums.push(Number(p));else words.push(p)});
   nums.sort(function(a,b){return a-b});
   words.sort(function(a,b){return a.localeCompare(b,void 0,{numeric:!0})});
-  var map=new Map,next=nums.length>0?nums[nums.length-1]+1:1;
-  nums.forEach(function(n){map.set(String(n),n)});
+  nums.forEach(function(x){if(x<=n)map.set(String(x),x)});
+  var next=n+1;
   words.forEach(function(w){map.set(w,next);next+=1});
+  nums.forEach(function(x){if(x>n)map.set(String(x),x)});
   return map;
 }
 function __lcMSXRefParse(text,name){
@@ -500,12 +516,25 @@ function __lcSniff(text){
 function __lcMSCacheStore(wireResults){
   var cache=window.__lcMSPinCache||(window.__lcMSPinCache=new Map);
   wireResults.forEach(function(w){
-    w.refs.forEach(function(set,ref){cache.set(ref,__lcMSRenumber(set))});
+    w.refs.forEach(function(set,ref){
+      var t=cache.get(ref);
+      if(!t){t=new Set;cache.set(ref,t)}
+      set.forEach(function(x){t.add(x)});
+    });
   });
   return cache;
 }
 function __lcMSBuild(wireResults,xrefResults){
   var cache=__lcMSCacheStore(wireResults);
+  var renum=new Map;
+  function mapFor(ref,compress,fallbackN){
+    var m=renum.get(ref);
+    if(m)return m;
+    var set=cache.get(ref)||new Set;
+    m=__lcMSRenumber(set,compress,fallbackN||set.size||2);
+    renum.set(ref,m);
+    return m;
+  }
   var comps=[],byRef=new Map,ignored=0;
   xrefResults.forEach(function(x){
     ignored+=x.ignored;
@@ -519,12 +548,12 @@ function __lcMSBuild(wireResults,xrefResults){
   comps.forEach(function(cp){
     var pre=(cp.ref.match(/^[A-Z]+/)||[""])[0];
     var cat=__lcMSVocab(cp.ref,cp.value,cp.category,cp.pkg);
-    var n=void 0;
+    var pkgN=__lcMSPkgPins(cp.pkg,pre);
     var cset=cache.get(cp.ref);
-    if(cset&&cset.size>0)n=cset.size;
-    if(n===void 0)n=__lcMSPkgPins(cp.pkg,pre);
+    var cacheN=cset&&cset.size>0?cset.size:void 0;
     var def=__lcMSDefPins[cat]!==void 0?__lcMSDefPins[cat]:2;
-    if(n===void 0)n=def;
+    var n=Math.max(pkgN||0,cacheN||0,def);
+    renum.set(cp.ref,__lcMSRenumber(cset||new Set,pkgN===void 0,n));
     var base=cat;
     var part;
     if(cat==="Connector_Generic:Conn")part="Conn_01x"+(n<10?"0"+n:String(n));
@@ -565,8 +594,8 @@ function __lcMSBuild(wireResults,xrefResults){
       code+=1;
       out.push('    (net (code "'+code+'") (name "'+esc(netName)+'")');
       nodes.forEach(function(nd){
-        var m=cache.get(nd.ref);
-        var num=m&&m.get(nd.pin);
+        var m=mapFor(nd.ref,!0,2);
+        var num=m.get(nd.pin);
         if(num===void 0)return;
         out.push('      (node (ref "'+esc(nd.ref)+'") (pin "'+num+'"))');
         nodeCount+=1;
