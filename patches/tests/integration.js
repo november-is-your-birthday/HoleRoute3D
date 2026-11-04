@@ -71,8 +71,12 @@ async function runBatch(defs) {
 
   // 1) full batch: wire + xref
   const t1 = await runBatch([{ name: 'wire.txt', content: f1 }, { name: 'xref.txt', content: f2 }]);
-  assert(t1.components.length === 5, 'batch1 components = 5 (V1/0 ignored), got ' + t1.components.length);
-  assert(t1.nets.length === 4, 'batch1 nets = 4 (ghost header filtered), got ' + t1.nets.length);
+  assert(t1.components.length === 6, 'batch1 components = 6 (V1/0 ignored; X1 whitelisted), got ' + t1.components.length);
+  const x1 = t1.components.find(c => c.ref === 'X1');
+  assert(x1 && /^Connector_Generic:Conn/.test(x1.category), 'X1 -> Connector_Generic:Conn* (category evidence beats X prefix), got ' + (x1 && x1.category));
+  assert(t1.nets.length === 3, 'batch1 nets = 3 (SIG dropped: TP2 dangling), got ' + t1.nets.length);
+  assert(!t1.nets.some(n => n.name === 'SIG'), 'SIG net dropped (TP2 not in xref)');
+  assert(t1.warnings.some(w => /不存在/.test(w.message)), 'dangling-ref warning present');
   const u1 = t1.components.find(c => c.ref === 'U1');
   assert(u1 && u1.category === 'Socket:DIP', 'U1 category Socket:DIP, got ' + (u1 && u1.category));
   const pi = t1.pinInfo['U1'];
@@ -96,9 +100,11 @@ async function runBatch(defs) {
   // 3) csv pair (agent fixtures: VCC/GND nets; R1,C1 comps)
   const t3 = await runBatch([{ name: 'w.csv', content: f3 }, { name: 'x.csv', content: f4 }]);
   assert(t3.components.length === 2, 'csv components = 2 (R1,C1), got ' + t3.components.length);
-  assert(t3.nets.length === 2, 'csv nets = 2 (VCC,GND), got ' + t3.nets.length);
-  const gnd = t3.nets.find(n => n.name === 'GND');
-  assert(gnd && gnd.nodes.some(n => n.ref === 'U1' && n.pin === '1'), 'csv GND has U1.1');
+  assert(t3.nets.length === 1, 'csv nets = 1 (GND dropped: U1 dangling), got ' + t3.nets.length);
+  assert(!t3.nets.some(n => n.name === 'GND'), 'csv GND dropped (U1 not in csv xref)');
+  assert(t3.warnings.some(w => /不存在/.test(w.message)), 'csv dangling warning (U1) present');
+  const vcc3 = t3.nets.find(n => n.name === 'VCC');
+  assert(vcc3 && vcc3.nodes.some(n => n.ref === 'R1' && n.pin === '1'), 'csv VCC keeps R1.1');
   // 3b) quoted-comma csv handled (inline sample): quoted value in xref, invalid ref filtered in wire
   const t3b = await runBatch([
     { name: 'q.csv', content: 'RefDes,Value,Category,Package\nR5,"1k, 5%",RESISTOR,-\n' },
@@ -116,7 +122,7 @@ async function runBatch(defs) {
 
   // 5) wire-only -> missing-xref warning
   const t5 = await runBatch([{ name: 'w.txt', content: f1 }]);
-  assert(t5.components.length === 0 && t5.nets.length > 0, 'wire-only: nets but no components');
+  assert(t5.components.length === 0 && t5.nets.length === 0, 'wire-only: nothing imported (dangling nets no longer emitted)');
   assert(t5.warnings.some(w => /缺少元件报告|Cross Reference/.test(w.message)), 'wire-only warning present');
 
   // 6) kicad passthrough unaffected

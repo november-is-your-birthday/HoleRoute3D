@@ -55,6 +55,8 @@ src = rep(src, 'async function ZR(i){const t={components:[],nets:[],pinInfo:{},w
           'async function ZR(i){return __lcImportBatch(i)}', 'S2 ZR batch dispatcher')
 src = rep(src, '{title:"网表 (.net)",accept:".net,.txt",onFiles:e}',
           '{title:"网表 / Multisim 报告",accept:".net,.txt,.csv,.cir",onFiles:e}', 'S3 drop-zone accept')
+src = rep(src, 'function __lcClearPrev(){const g=__lcPG.current;if(!g)return;while(g.children.length){const c=g.children[0];g.remove(c),c.traverse&&c.traverse(o=>{o.geometry&&o.geometry.dispose&&o.geometry.dispose()})}}',
+          'function __lcClearPrev(){const g=__lcPG.current;if(!g)return;while(g.children.length){const c=g.children[0];g.remove(c),c.traverse&&c.traverse(o=>{o.geometry&&o.geometry.dispose&&o.geometry.dispose();const mt=o.material;if(mt&&!(mt.userData&&mt.userData.shared)){mt.map&&mt.map.dispose&&mt.map.dispose(),mt.dispose&&mt.dispose()}})}}', 'S4 ghost dispose materials')
 
 if CHECK_ONLY:
     print('check only, not written')

@@ -40,6 +40,10 @@ function LcFpPanel(param){
   var c=qt.useState(6),rowSp=c[0],setRowSp=c[1];
   var d=qt.useState(__lcUserFpLoad()),saved=d[0],setSaved=d[1];
   var fp=__lcFpTemplate(name,rows,rowSp);
+  var fit=null;
+  var bargs=window.__lcBoardArgs;
+  if(bargs&&bargs.board)fit=bargs.board;
+  var over=!!fit&&(Math.max(2,Math.round(Number(rows)||15))>fit.width-1||fp.rowSpacing>fit.height-1);
   return P.jsxs("section",{className:"pin-header-configurator lc-fp-panel","aria-label":"自定义封装",children:[
     P.jsxs("div",{className:"pin-header-configurator-heading",children:[
       P.jsx("strong",{children:"自定义封装（开发板 / 模块）"}),
@@ -52,13 +56,14 @@ function LcFpPanel(param){
     ]}),
     P.jsxs("div",{className:"lc-fp-row",children:[
       P.jsx("img",{className:"lc-thumb",alt:"",src:__lcThumb("dev_board",fp.label,fp.pinCount,fp.pinOffsets)}),
-      P.jsx("button",{className:"tool-button primary",type:"button",onClick:function(){onPick(fp),close()},children:"放置"}),
+      P.jsx("button",{className:"tool-button primary",type:"button",disabled:over,title:over?"封装超出当前洞板尺寸":"放置到板上",onClick:function(){onPick(fp),close()},children:"放置"}),
       P.jsx("button",{className:"tool-button",type:"button",onClick:function(){
         var list=saved.filter(function(x){return x.label!==fp.label}).concat([{label:fp.label,rows:Math.max(2,Math.round(rows)),rowSpacing:fp.rowSpacing}]);
         setSaved(list);__lcUserFpSave(list);
       },children:"保存到库"})
     ]}),
     P.jsx("small",{children:"排距 6 孔 ≈ 15.24 mm（Nano / ESP32 / Pico 的双排孔距）；排距 3 孔 = DIP 芯片。面包板上会要求跨中央沟槽。"}),
+    over&&P.jsx("small",{style:{color:"#b42318"},children:"⚠ 封装超出当前洞板（"+fit.width+"×"+fit.height+" 孔）的可用范围，请减小每排脚数或排距后再放置。"}),
     saved.length>0&&P.jsxs("div",{className:"lc-fp-saved",children:[
       P.jsx("strong",{children:"已保存的封装"}),
       saved.map(function(x){return P.jsxs("div",{className:"lc-fp-saved-row",children:[
@@ -78,16 +83,24 @@ function __lcNetCommit(fn){
 }
 function __lcNetAddTo(p,nm,ref,pin){
   var pn=String(pin);
+  var changed=!1;
   var nets=p.importState.nets.map(function(n){
-    var keep=n.nodes.filter(function(nd){return!(nd.ref===ref&&nd.pin===pn)});
+    var keep=n.nodes.filter(function(nd){
+      var same=nd.ref===ref&&nd.pin===pn;
+      if(same)changed=!0;
+      return!same;
+    });
     return keep.length===n.nodes.length?n:{...n,nodes:keep};
   });
   var hit=null;
   for(var i=0;i<nets.length;i+=1)if(nets[i].name===nm){hit=nets[i];break}
   if(!hit){hit={name:nm,nodes:[]};nets=nets.concat([hit])}
   var nodes=hit.nodes.filter(function(nd){return!(nd.ref===ref&&nd.pin===pn)}).concat([{ref:ref,pin:pn}]);
+  if(nodes.length!==hit.nodes.length)changed=!0;
   nets=nets.map(function(n){return n===hit?{...n,nodes:nodes}:n});
-  return{...p,importState:{...p.importState,nets:nets}};
+  var res={...p,importState:{...p.importState,nets:nets}};
+  if(changed&&p.routing&&p.routing.traces)res.routing={...p.routing,traces:p.routing.traces.filter(function(t){return t.net!==nm}),jumpers:p.routing.jumpers.filter(function(j){return j.net!==nm}),failedNets:p.routing.failedNets.filter(function(f){return f!==nm})};
+  return res;
 }
 function __lcNetAdd(nm,ref,pin){__lcNetCommit(function(p){return __lcNetAddTo(p,nm,ref,pin)})}
 function __lcNetEnsure(nm){
@@ -100,8 +113,19 @@ function __lcNetEnsure(nm){
 function __lcNetDel(nm,ref,pin){
   var pn=String(pin);
   __lcNetCommit(function(p){
-    var nets=p.importState.nets.map(function(n){return n.name!==nm?n:{...n,nodes:n.nodes.filter(function(nd){return!(nd.ref===ref&&nd.pin===pn)})}}).filter(function(n){return n.name!==nm||n.nodes.length>0});
-    return{...p,importState:{...p.importState,nets:nets}};
+    var removed=!1;
+    var nets=p.importState.nets.map(function(n){
+      if(n.name!==nm)return n;
+      var keep=n.nodes.filter(function(nd){
+        var same=nd.ref===ref&&nd.pin===pn;
+        if(same)removed=!0;
+        return!same;
+      });
+      return keep.length===n.nodes.length?n:{...n,nodes:keep};
+    }).filter(function(n){return n.name!==nm||n.nodes.length>0});
+    var res={...p,importState:{...p.importState,nets:nets}};
+    if(removed&&p.routing&&p.routing.traces)res.routing={...p.routing,traces:p.routing.traces.filter(function(t){return t.net!==nm}),jumpers:p.routing.jumpers.filter(function(j){return j.net!==nm}),failedNets:p.routing.failedNets.filter(function(f){return f!==nm})};
+    return res;
   })
 }
 function __lcNetDelNet(nm){
@@ -122,7 +146,7 @@ function __lcPinFromEvent(ev){
     if(!sc||!cm||!cv||!pj||!ba)return null;
     var r=cv.getBoundingClientRect();
     if(r.width<2||r.height<2)return null;
-    var ndc=new Ot((ev.clientX-r.left)/r.width*2-1,-((ev.clientY-r.top)/r.height*2+1));
+    var ndc=new Ot((ev.clientX-r.left)/r.width*2-1,1-(ev.clientY-r.top)/r.height*2);
     var rc=new Xv;
     rc.setFromCamera(ndc,cm);
     var o=rc.ray.origin,d=rc.ray.direction;
@@ -162,6 +186,7 @@ function __lcPickHover(ev){
 }
 function __lcPickStop(){
   window.__lcPicking=null;
+  try{window.dispatchEvent(new CustomEvent("lc-pick-stop"))}catch(e){}
   var b=document.getElementById("lc-pick-banner");
   if(b&&b.parentNode)b.parentNode.removeChild(b);
   var m=window.__lcPickMarker;
@@ -221,6 +246,11 @@ function __lcNetPanel(t){
   var sd=qt.useState(1);
   var selPin=sd[0];
   var setSelPin=sd[1];
+  var se=qt.useEffect(function(){
+    var h=function(){setPickNet(null)};
+    window.addEventListener("lc-pick-stop",h);
+    return function(){window.removeEventListener("lc-pick-stop",h)};
+  },[]);
   if(!proj)return null;
   var comps=proj.components||[];
   var nets=(proj.importState&&proj.importState.nets)||[];
@@ -228,7 +258,7 @@ function __lcNetPanel(t){
   var netsSorted=nets.slice().sort(function(a,b){return $S(b.name)-$S(a.name)||a.name.localeCompare(b.name,void 0,{numeric:!0})});
   var pickNetObj=null;
   for(var q0=0;q0<nets.length;q0+=1)if(nets[q0].name===pickNet){pickNetObj=nets[q0];break}
-  if(pickNet&&!pickNetObj)setPickNet(null);
+  if(pickNet&&!pickNetObj){setPickNet(null),__lcPickStop()}
   var selComp=null;
   for(var i=0;i<comps.length;i+=1)if(comps[i].name===selRef){selComp=comps[i];break}
   var autoPick=function(nm){
@@ -309,7 +339,7 @@ function __lcNetStyle(){
   if(el)return;
   var st=document.createElement("style");
   st.id="lc-net-style";
-  st.textContent="#lc-pick-banner{position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:9999;background:var(--ui-accent-soft,#223550);border:1px solid var(--ui-accent,#6f9fe8);color:var(--ui-text,#d5dce5);padding:6px 16px;border-radius:3px;font-size:12px;box-shadow:0 4px 14px rgba(0,0,0,.25);pointer-events:none}.lc-net-section .lc-inp{height:26px;border:1px solid var(--ui-border,#cbd5df);border-radius:2px;background:#fff;color:var(--ui-text,#1e242b);padding:0 6px;font-size:12px;min-width:0}.lc-net-section .lc-inp:focus{border-color:var(--ui-accent,#235bdb);outline:1px solid #b9d2ff}.lc-net-section .lc-net-new{display:flex;align-items:center;gap:6px;padding:8px 8px 0}.lc-net-section .lc-net-inp-name{flex:1}.lc-net-section .lc-net-add{min-height:26px;padding:0 12px;font-size:11px}.lc-net-section .lc-net-new .text-button{margin-top:0}.lc-net-section .lc-net-tip{padding:6px 8px 8px;color:var(--ui-muted,#667085);font-size:11px;line-height:1.5}.lc-net-section .lc-net-hint{color:var(--ui-muted,#667085);font-size:11px;font-weight:400}.lc-net-section .lc-net-hint-on{color:var(--ui-accent,#235bdb);font-weight:600}.lc-net-section .lc-net-list{max-height:300px;overflow:auto}.lc-net-section .lc-net-item{padding:6px 8px;border-bottom:1px solid var(--ui-border-soft,#edf0f4)}.lc-net-section .lc-net-item:last-child{border-bottom:0}.lc-net-section .lc-net-item.picking{background:var(--ui-accent-soft,#eaf1fd)}.lc-net-section .lc-net-empty{padding:3px 0 0;color:var(--ui-muted,#667085);font-size:10px}.lc-net-section .lc-net-head{display:flex;align-items:center;gap:8px;min-height:22px}.lc-net-section .lc-net-head .text-button{margin-top:0}.lc-net-section .lc-net-name{font-weight:700;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.lc-net-section .lc-net-count{color:var(--ui-muted,#667085);font-size:11px;margin-right:auto}.lc-net-section .lc-net-picking{color:#b42318}:root[data-theme=dark] .lc-net-section .lc-net-picking{color:#f0b9b2}.lc-net-section .lc-net-nodes{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}.lc-net-section .lc-net-chip{display:inline-flex;align-items:center;gap:3px;background:var(--ui-accent-soft,#eaf1fd);color:var(--ui-accent,#255da8);border-radius:2px;padding:1px 5px;font-size:11px;line-height:18px}:root[data-theme=dark] .lc-net-section .lc-net-chip{color:#9fc0f5}.lc-net-section .lc-net-chip button{border:0;background:none;color:inherit;cursor:pointer;font-size:12px;line-height:1;padding:0 1px;opacity:.6}.lc-net-section .lc-net-chip button:hover{opacity:1}.lc-net-section .lc-net-chip.miss{background:#f6e5e3;color:#b42318;opacity:.8;text-decoration:line-through}:root[data-theme=dark] .lc-net-section .lc-net-chip.miss{background:#3a211e;color:#f0b9b2}.lc-net-section .lc-net-grid{display:grid;grid-template-columns:1.2fr .7fr 1fr;gap:6px;padding:8px}.lc-net-section .lc-net-grid select:disabled{opacity:.5}:root[data-theme=dark] .lc-net-section .lc-inp{background:#252e39}.lc-fp-panel .lc-fp-fields input{width:100%;height:32px;border:1px solid var(--ui-border,#c7d1df);border-radius:3px;background:#fff;color:var(--ui-text,#1e242b);padding:0 8px}:root[data-theme=dark] .lc-fp-panel .lc-fp-fields input{background:#252e39}.lc-fp-panel .lc-fp-row .tool-button{min-height:26px;padding:0 12px;font-size:11px}.lc-fp-panel .lc-fp-saved{border-top:1px solid var(--ui-border-soft);padding-top:8px;margin-top:2px}.lc-fp-panel .lc-fp-saved strong{font-size:11px;font-weight:750;opacity:.75}.lc-fp-panel .lc-fp-saved-row .text-button{margin-top:0}";
+  st.textContent="#lc-pick-banner{position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:9999;background:var(--ui-accent-soft,#223550);border:1px solid var(--ui-accent,#6f9fe8);color:var(--ui-text,#d5dce5);padding:6px 16px;border-radius:3px;font-size:12px;box-shadow:0 4px 14px rgba(0,0,0,.25);pointer-events:none}.lc-net-section .lc-inp{height:26px;border:1px solid var(--ui-border,#cbd5df);border-radius:2px;background:#fff;color:var(--ui-text,#1e242b);padding:0 6px;font-size:12px;min-width:0}.lc-net-section .lc-inp:focus{border-color:var(--ui-accent,#235bdb);outline:1px solid #b9d2ff}.lc-net-section .lc-net-new{display:flex;align-items:center;gap:6px;padding:8px 8px 0}.lc-net-section .lc-net-inp-name{flex:1}.lc-net-section .lc-net-add{min-height:26px;padding:0 12px;font-size:11px}.lc-net-section .lc-net-new .text-button{margin-top:0}.lc-net-section .lc-net-tip{padding:6px 8px 8px;color:var(--ui-muted,#667085);font-size:11px;line-height:1.5}.lc-net-section .lc-net-hint{color:var(--ui-muted,#667085);font-size:11px;font-weight:400}.lc-net-section .lc-net-hint-on{color:var(--ui-accent,#235bdb);font-weight:600}.lc-net-section .lc-net-list{max-height:300px;overflow:auto}.lc-net-section .lc-net-item{padding:6px 8px;border-bottom:1px solid var(--ui-border-soft,#edf0f4)}.lc-net-section .lc-net-item:last-child{border-bottom:0}.lc-net-section .lc-net-item.picking{background:var(--ui-accent-soft,#eaf1fd)}.lc-net-section .lc-net-empty{padding:3px 0 0;color:var(--ui-muted,#667085);font-size:10px}.lc-net-section .lc-net-head{display:flex;align-items:center;gap:8px;min-height:22px}.lc-net-section .lc-net-head .text-button{margin-top:0}.lc-net-section .lc-net-name{font-weight:700;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.lc-net-section .lc-net-count{color:var(--ui-muted,#667085);font-size:11px;margin-right:auto}.lc-net-section .lc-net-picking{color:#b42318}:root[data-theme=dark] .lc-net-section .lc-net-picking{color:#f0b9b2}.lc-net-section .lc-net-nodes{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}.lc-net-section .lc-net-chip{display:inline-flex;align-items:center;gap:3px;background:var(--ui-accent-soft,#eaf1fd);color:var(--ui-accent,#255da8);border-radius:2px;padding:1px 5px;font-size:11px;line-height:18px}:root[data-theme=dark] .lc-net-section .lc-net-chip{color:#9fc0f5}.lc-net-section .lc-net-chip button{border:0;background:none;color:inherit;cursor:pointer;font-size:12px;line-height:1;padding:0 1px;opacity:.6}.lc-net-section .lc-net-chip button:hover{opacity:1}.lc-net-section .lc-net-chip.miss{background:#f6e5e3;color:#b42318;opacity:.8;text-decoration:line-through}:root[data-theme=dark] .lc-net-section .lc-net-chip.miss{background:#3a211e;color:#f0b9b2}.lc-net-section .lc-net-grid{display:grid;grid-template-columns:1.2fr .7fr 1fr;gap:6px;padding:8px}.lc-net-section .lc-net-grid select:disabled{opacity:.5}:root[data-theme=dark] .lc-net-section .lc-inp{background:#252e39}:root[data-theme=dark] .lc-net-section .lc-inp:focus{outline-color:#2f5d8a}.lc-fp-panel .lc-fp-fields input{width:100%;height:32px;border:1px solid var(--ui-border,#c7d1df);border-radius:3px;background:#fff;color:var(--ui-text,#1e242b);padding:0 8px}:root[data-theme=dark] .lc-fp-panel .lc-fp-fields input{background:#252e39}.lc-fp-panel .lc-fp-row .tool-button{min-height:26px;padding:0 12px;font-size:11px}.lc-fp-panel .lc-fp-saved{border-top:1px solid var(--ui-border-soft);padding-top:8px;margin-top:2px}.lc-fp-panel .lc-fp-saved strong{font-size:11px;font-weight:750;opacity:.75}.lc-fp-panel .lc-fp-saved-row .text-button{margin-top:0}";
   document.head.appendChild(st);
 }
 __lcNetStyle();

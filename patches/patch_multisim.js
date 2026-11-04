@@ -41,7 +41,7 @@ function __lcMSPkgPins(pkg,refPrefix){
   var p=String(pkg||"").toUpperCase();
   if(refPrefix!=="U"&&refPrefix!=="A")return void 0;
   if(p.indexOf("CASE751A")>=0)return 14;
-  var m=p.match(/(?:DIP|PDIP|SDIP|SO|SOP|SOIC)-?P?-?(\d+)/i)||p.match(/\bD0?(\d+)\b/i)||p.match(/\bN0?(\d+)\b/i)||p.match(/(\d+)\s*PIN/i);
+  var m=p.match(/(?:DIP|PDIP|SDIP|SO|SOP|SOIC)[- ]?P?[- ]?(\d+)/i)||p.match(/\b(\d+)[- ]?DIP\b/i)||p.match(/\bD0?(\d+)\b/i)||p.match(/\bN0?(\d+)\b/i)||p.match(/(\d+)\s*PIN/i);
   if(!m)return void 0;
   var n=Number(m[1]);
   return n>=4&&n<=64?n:void 0;
@@ -58,6 +58,7 @@ function __lcMSVocab(ref,value,category,pkg){
   if(c.indexOf("POTENTIOMETER")>=0||c.indexOf("VARIABLE_RESISTOR")>=0||v.indexOf("POT")>=0)return"Device:R_Potentiometer";
   if(p.indexOf("TO-220")>=0||p.indexOf("TO220")>=0)return"Transistor_FET:MOSFET";
   if(c.indexOf("RELAY")>=0||pre==="K"||pre==="RL")return"Relay:Relay_SPDT";
+  if(c.indexOf("HEADER")>=0||c.indexOf("CONN")>=0||pre==="J"||pre==="P"||pre==="CN")return"Connector_Generic:Conn";
   if(c.indexOf("CRYSTAL")>=0||c.indexOf("XTAL")>=0||pre==="Y"||pre==="X")return"Device:Crystal";
   if(c.indexOf("FUSE")>=0)return"Device:FUSE";
   if(c.indexOf("BUZZER")>=0||v.indexOf("BUZZER")>=0||pre==="BZ"||pre==="LS")return"Device:Buzzer";
@@ -74,16 +75,19 @@ function __lcMSVocab(ref,value,category,pkg){
   if(c.indexOf("INDUCTOR")>=0||pre==="L")return"Device:L";
   if(c.indexOf("RESISTOR")>=0||pre==="R")return"Device:R";
   if(p.indexOf("TO-92")>=0||p.indexOf("TO92")>=0||c.indexOf("BJT")>=0||c.indexOf("TRANSISTOR")>=0||pre==="Q")return"Transistor_BJT:NPN";
-  if(c.indexOf("HEADER")>=0||c.indexOf("CONN")>=0||pre==="J"||pre==="P"||pre==="CN")return"Connector_Generic:Conn";
   if(pre==="U"||pre==="A"||c.indexOf("IC")>=0||c.indexOf("TIMER")>=0||c.indexOf("OPAMP")>=0||c.indexOf("OP-AMP")>=0||c.indexOf("MCU")>=0||/^74/.test(c)||/^40/.test(c)||c.indexOf("LOGIC")>=0||c.indexOf("MIXED")>=0||c.indexOf("ANALOG")>=0)return"Socket:DIP";
   return"Unknown:GENERIC";
 }
 function __lcMSIgnored(ref,value,category){
   var r=String(ref).trim(),v=String(value).trim().toUpperCase(),c=String(category).toUpperCase();
-  return c==="POWER_SOURCES"||c.indexOf("VOLTAGE_SOURCES")>=0||c.indexOf("POWER")>=0&&c.indexOf("SOURCE")>=0||r==="0"||v==="GROUND"||v==="VCC"||v==="VDD"||v==="GND";
+  if(r==="0")return!0;
+  if(c==="POWER_SOURCES"||c.indexOf("VOLTAGE_SOURCES")>=0||(c.indexOf("POWER")>=0&&c.indexOf("SOURCE")>=0))return!0;
+  return(c.indexOf("POWER")>=0||c.indexOf("GROUND")>=0||c.indexOf("SOURCE")>=0)&&(v==="GND"||v==="GROUND"||v==="VCC"||v==="VDD"||v==="VSS"||v==="VEE");
 }
 function __lcMSRefOk(ref){
-  return/^(R|C|L|LED|D|Q|U|J|P|S|SW|RV|V|A|TP|K|CN|0)[A-Za-z0-9_+-]*$/i.test(String(ref));
+  var r=String(ref);
+  if(r==="0")return!0;
+  return/^(R|C|L|LED|D|Q|U|J|P|S|SW|RV|V|A|TP|K|CN|FB|BT|MK|NT|BZ|F|T|Y|X|Z|LS|DS|OP|RN)\d+[A-Za-z0-9_+-]*$/i.test(r);
 }
 function __lcMSWireParse(text,name){
   var csv=__lcMSCsvMode(text);
@@ -100,8 +104,9 @@ function __lcMSWireParse(text,name){
     if(ref.toUpperCase()==="REFDES"||/^PIN[#\d\s]*$/.test(pin.toUpperCase()))continue;
     if(/_uc/i.test(net)||net.toLowerCase()==="net")continue;
     if(!__lcMSRefOk(ref))continue;
-    ref=__lcMSFoldRef(ref);
+    ref=__lcMSFoldRef(String(ref).toUpperCase());
     pin=pin.toUpperCase().replace(/\s+/g,"");
+    if(/^\d+$/.test(pin))pin=String(Number(pin));
     var arr=nets.get(net);
     if(!arr){arr=[];nets.set(net,arr)}
     var dup=!1;
@@ -152,7 +157,7 @@ function __lcMSXRefParse(text,name){
     var ref=f[0],value=f[1]||"",category=f[2]||"",pkg=f[3]||"-";
     if(!__lcMSRefOk(ref))continue;
     if(__lcMSIgnored(ref,value,category)){ignored+=1;continue}
-    ref=__lcMSFoldRef(ref);
+    ref=__lcMSFoldRef(String(ref).toUpperCase());
     var hit=null;
     for(var j=0;j<comps.length;j+=1)if(comps[j].ref===ref){hit=comps[j];break}
     if(!hit){hit={ref:ref,value:"",category:"",pkg:"-"};comps.push(hit)}
@@ -182,7 +187,7 @@ function __lcSniff(text){
       continue;
     }
     if(f.length<3)continue;
-    if(refLike(f[f.length-2])&&pinLike(f[f.length-1]))wireish+=1;
+    if(f.length>=4&&refLike(f[f.length-2])&&pinLike(f[f.length-1]))wireish+=1;
     else if(refLike(f[0]))xrefish+=1;
   }
   if(wireish>=xrefish&&wireish>0)return"mswire";
@@ -191,7 +196,7 @@ function __lcSniff(text){
   return"text";
 }
 function __lcMSCacheStore(wireResults){
-  var cache=window.__lcMSPinCache||(window.__lcMSPinCache=new Map);
+  var cache=new Map;
   wireResults.forEach(function(w){
     w.refs.forEach(function(set,ref){
       var t=cache.get(ref);
@@ -232,7 +237,9 @@ function __lcMSBuild(wireResults,xrefResults){
     if(cset)cset.forEach(function(pp){if(/^\d+$/.test(pp)){var vv=Number(pp);if(vv>maxNum)maxNum=vv}});
     var def=__lcMSDefPins[cat]!==void 0?__lcMSDefPins[cat]:2;
     var n=Math.max(pkgN||0,cacheN||0,def,maxNum||0);
-    renum.set(cp.ref,__lcMSRenumber(cset||new Set,pkgN===void 0,n));
+    var mp=__lcMSRenumber(cset||new Set,pkgN===void 0,n);
+    renum.set(cp.ref,mp);
+    mp.forEach(function(vv){if(vv>n)n=vv});
     var base=cat;
     var part;
     if(cat==="Connector_Generic:Conn")part="Conn_01x"+(n<10?"0"+n:String(n));
@@ -267,18 +274,27 @@ function __lcMSBuild(wireResults,xrefResults){
   });
   out.push("  )");
   out.push("  (nets");
-  var code=0,nodeCount=0;
+  var code=0,nodeCount=0,wireNets=0,usedRefs=new Map,dangling=new Set,conflicts=0,conflictEx="";
+  wireResults.forEach(function(w){wireNets+=w.nets.size});
   wireResults.forEach(function(w){
     w.nets.forEach(function(nodes,netName){
-      code+=1;
-      out.push('    (net (code "'+code+'") (name "'+esc(netName)+'")');
+      var rows=[];
       nodes.forEach(function(nd){
+        if(!byRef.get(nd.ref)){dangling.add(nd.ref);return}
         var m=mapFor(nd.ref,!0,2);
         var num=m.get(nd.pin);
         if(num===void 0)return;
-        out.push('      (node (ref "'+esc(nd.ref)+'") (pin "'+num+'"))');
-        nodeCount+=1;
+        var key=nd.ref+"@"+num;
+        var ow=usedRefs.get(key);
+        if(ow&&ow!==netName){conflicts+=1;conflictEx||(conflictEx=nd.ref+"."+num+"（同时属于 "+ow+" 与 "+netName+"）");return}
+        usedRefs.set(key,netName);
+        rows.push('      (node (ref "'+esc(nd.ref)+'") (pin "'+num+'"))');
       });
+      if(rows.length===0)return;
+      code+=1;
+      out.push('    (net (code "'+code+'") (name "'+esc(netName)+'")');
+      rows.forEach(function(rw){out.push(rw)});
+      nodeCount+=rows.length;
       out.push("    )");
     });
   });
@@ -286,6 +302,9 @@ function __lcMSBuild(wireResults,xrefResults){
   out.push(")");
   var warnings=[];
   if(ignored>0)warnings.push({fileName:"multisim",message:"已忽略 "+ignored+" 个电源 / 地符号（POWER / GROUND / VCC 等，不参与布局）。"});
+  if(dangling.size>0)warnings.push({fileName:"multisim",message:"连线表引用了元件报告中不存在的元件（"+Array.from(dangling).slice(0,6).join("、")+"），相关连接已忽略。请确认 Wire List 与 Cross Reference 来自同一个 Multisim 工程。"});
+  if(conflicts>0)warnings.push({fileName:"multisim",message:"检测到 "+conflicts+" 处引脚冲突："+conflictEx+" 等。多单元元件（U1A / U1B）折叠后引脚号可能重叠，请检查原始报告。"});
+  if(wireNets>0&&comps.length===0)warnings.push({fileName:"multisim",message:"已解析连线表，但缺少元件报告：请同时导入 Multisim 的 Cross Reference Report（交叉引用报告）才能生成元件。"});
   var dropped=0;
   wireResults.forEach(function(w){w.rows>0&&(dropped+=w.rows)});
   if(dropped>0&&nodeCount===0)warnings.push({fileName:"multisim",message:"连线表已读取但没有任何有效引脚：请确认 Cross Reference 报告与 Wire List 来自同一个 Multisim 工程。"});
@@ -305,14 +324,18 @@ async function __lcImportBatch(files){
   }
   if(wires.length>0||xrefs.length>0){
     var built=__lcMSBuild(wires,xrefs);
-    t4(t,e4(built.sexpr,"multisim-reports"));
+    try{t4(t,e4(built.sexpr,"multisim-reports"))}catch(msErr){t.warnings.push({fileName:"multisim",message:"Multisim 报告内容解析失败："+msErr.message})}
     t.warnings.push(...built.warnings);
-    if(built.nets>0&&built.comps===0)t.warnings.push({fileName:"multisim",message:"已解析连线表，但缺少元件报告：请同时导入 Multisim 的 Cross Reference Report（交叉引用报告）才能生成元件。"});
+    t.warnings=t.warnings.filter(function(w){return!(w.fileName==="multisim-reports"&&/未识别到 KiCad/.test(w.message))});
   }
   for(var j=0;j<plain.length;j+=1){
     var p=plain[j];
-    var s=p.kind==="protel"?__lcProtel(p.text):p.text;
-    t4(t,e4(s,p.name));
+    try{
+      var s=p.kind==="protel"?__lcProtel(p.text):p.text;
+      t4(t,e4(s,p.name));
+    }catch(pe){
+      t.warnings.push({fileName:p.name,message:"无法识别该文件的格式（不是 KiCad / Protel 网表，也不是 Multisim 报告），已跳过。"});
+    }
   }
   return t;
 }

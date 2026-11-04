@@ -39,6 +39,7 @@ const GLOBALS = new Set([
   'encodeURI', 'decodeURI', 'structuredClone', 'queueMicrotask', 'requestAnimationFrame',
   'cancelAnimationFrame', 'setTimeout', 'clearTimeout', 'setInterval', 'clearInterval',
   'console', 'window', 'document', 'localStorage', 'sessionStorage', 'navigator', 'performance',
+  'CustomEvent', 'Event', 'MouseEvent', 'KeyboardEvent', 'ResizeObserver',
   'crypto', 'self', 'globalThis', 'alert', 'confirm', 'prompt', 'fetch', 'URL', 'URLSearchParams',
   'Intl', 'require', 'module', 'exports', 'process', 'Buffer', '__dirname', 'arguments',
   // 关键字
