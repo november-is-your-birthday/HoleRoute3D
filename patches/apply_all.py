@@ -71,6 +71,46 @@ src = rep(src, 'if (p.charAt(0) === "C") return (b.indexOf("CP") >= 0 || b.index
 src = rep(src, '(b.indexOf("CP")>=0||b.indexOf("POLAR")>=0||b.indexOf("电解")>=0)?"Device:CP":"Device:C"',
           '(' + ELE_TEST_MIN + ')?"Device:CP":"Device:C"', 'S7 lcClass electrolytic')
 
+# v3.2.3: 嘉立创导出按键/开关的字母脚（SW1-A/SW1-B）+ 轻触按键分类 + 工具栏透视按钮
+src = rep(src, 'var mm = tok.match(/^(.+)-(\\d+)$/);',
+          'var mm = tok.match(/^(.+)-([0-9A-Za-z]+)$/);', 'S8a protel letter pins in nets')
+S8B_OLD = '''  function pinsOf(ref) {
+    var o = pinMap[ref] || { "1": 1, "2": 1 };
+    return Object.keys(o).map(Number).sort(function (a, b) { return a - b; });
+  }'''
+S8B_NEW = '''  var pinNumMaps = {};
+  function pinNumMapOf(ref) {
+    var m = pinNumMaps[ref];
+    if (m) return m;
+    var o = pinMap[ref] || { "1": 1, "2": 1 };
+    var nums = [], words = [];
+    Object.keys(o).forEach(function (p) {
+      if (/^\\d+$/.test(p)) nums.push(Number(p)); else words.push(p);
+    });
+    nums.sort(function (a, b) { return a - b; });
+    words.sort(function (a, b) { return a.localeCompare(b, void 0, { numeric: true }); });
+    m = {};
+    var next = 1;
+    nums.forEach(function (x) { m[String(x)] = String(x); if (x >= next) next = x + 1; });
+    words.forEach(function (w) { m[w] = String(next); next += 1; });
+    pinNumMaps[ref] = m;
+    return m;
+  }
+  function pinsOf(ref) {
+    var m = pinNumMapOf(ref);
+    return Object.keys(m).map(function (k) { return Number(m[k]); }).sort(function (a, b) { return a - b; });
+  }'''
+src = rep(src, S8B_OLD, S8B_NEW, 'S8b protel pin renumber map')
+src = rep(src, """      out.push('      (node (ref "' + __lcEsc(nd.ref) + '") (pin "' + __lcEsc(nd.pin) + '"))');""",
+          """      var mpin = pinNumMapOf(nd.ref)[nd.pin] || nd.pin;
+      out.push('      (node (ref "' + __lcEsc(nd.ref) + '") (pin "' + __lcEsc(mpin) + '"))');""", 'S8c protel node pin mapping')
+src = rep(src, 'if (p === "SW" || p === "KEY") return ["Switch", "SW_SPDT"];',
+          'if (p === "SW" || p === "KEY") return (b.indexOf("KEY") >= 0 || b.indexOf("TACT") >= 0 || b.indexOf("PUSH") >= 0 || b.indexOf("BUTTON") >= 0 || b.indexOf("轻触") >= 0) ? ["Button", "SW_Push"] : ["Switch", "SW_SPDT"];', 'S9 protel KEY -> tactile button')
+src = rep(src, 'children:"飞线"})]})',
+          'children:"飞线"}),P.jsx($n,{active:v,"aria-label":"透视板体，快捷键 T",title:"透视板体：透过板体查看背面走线（快捷键 T）",onClick:w,children:"透视"})]})', 'S10 toolbar xray button')
+src = rep(src, 'if(b.indexOf("PUSH")>=0||b.indexOf("TACT")>=0||b.indexOf("轻触")>=0||b.indexOf("BUTTON")>=0)return"Button:SW_Push";return"Switch:SW_SPDT"',
+          'if(b.indexOf("PUSH")>=0||b.indexOf("TACT")>=0||b.indexOf("KEY")>=0||b.indexOf("轻触")>=0||b.indexOf("BUTTON")>=0)return"Button:SW_Push";return"Switch:SW_SPDT"', 'S11 lcClass KEY evidence')
+
 if CHECK_ONLY:
     print('check only, not written')
     raise SystemExit(0)
