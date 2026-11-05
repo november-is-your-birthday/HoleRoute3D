@@ -70,7 +70,7 @@ function __lcMSVocab(ref,value,category,pkg){
   if(c.indexOf("TERMINAL")>=0)return"TerminalBlock:TerminalBlock";
   if(c.indexOf("TESTPOINT")>=0||pre==="TP")return"TestPoint:TestPoint";
   if(c.indexOf("DIODE")>=0||c.indexOf("ZENER")>=0||pre==="D")return"Device:D";
-  if(c.indexOf("ELECT")>=0||(c.indexOf("CAP")>=0&&/^\d+(\.\d+)?(U|µ)F/.test(v)))return"Device:CP";
+  if(c.indexOf("ELECT")>=0||c.indexOf("TANT")>=0||(c.indexOf("CAP")>=0&&/^\d+(\.\d+)?\s*(U|Μ|µ|μ)F/.test(v))||(c.indexOf("CAP")>=0&&/ELE|TANT|POLAR|RADIAL/.test(p)))return"Device:CP";
   if(c.indexOf("CAP")>=0||pre==="C")return"Device:C";
   if(c.indexOf("INDUCTOR")>=0||pre==="L")return"Device:L";
   if(c.indexOf("RESISTOR")>=0||pre==="R")return"Device:R";
