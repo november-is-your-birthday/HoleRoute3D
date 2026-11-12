@@ -37,7 +37,7 @@
 
 - 新增 `patches/tests/net_edit.js`（19 项）：引脚跨网移动清双网铜箔、跳线 / failedNets 一并清、
   空网删除、重复添加幂等、删引脚清本网、删整网静默、旧工程缺 `jumpers` 不抛异常。
-- 全量补丁测试 6 套 + `harness` 布局布线分数 **15476 零漂移**，`lint-lc --strict` 通过。
+- 全量补丁测试 7 套 + `harness` 布局布线分数 **15476 零漂移**，`lint-lc --strict` 通过。
 
 ### 变更
 

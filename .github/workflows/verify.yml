@@ -23,6 +23,13 @@ jobs:
       - name: 补丁静态检查（同名不同义的标识符 / 参数不足）
         run: node harness/lint-lc.js --strict
 
+      - name: 补丁功能回归（网表导入 / 网络编辑 / 拾取公式）
+        run: |
+          for f in patches/tests/*.js; do
+            echo "== $f"
+            node "$f"
+          done
+
       - name: 独立连通性校验（不复用被改算法）
         run: node harness/check.js --only=small-555
 
