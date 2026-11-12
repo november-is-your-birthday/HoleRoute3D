@@ -4888,12 +4888,27 @@ function __lcProtel(text){
     var m = pinNumMapOf(ref);
     return Object.keys(m).map(function (k) { return Number(m[k]); }).sort(function (a, b) { return a - b; });
   }
+  /* 从封装名推断引脚数：立创/嘉立创的 Protel 网表不带 libparts，只看网表节点会低估脚数。 */
+  function pkgPinCount(fp, prefix) {
+    var s = String(fp || "").toUpperCase();
+    if (!s || (prefix !== "U" && prefix !== "IC" && prefix !== "A")) return 0;
+    var m = s.match(/(?:PDIP|SDIP|DIP|TSSOP|SSOP|MSOP|SOIC|SOP|VQFN|WQFN|QFN|DFN|LQFP|TQFP)[-_ ]?P?[-_ ]?(\d+)/)
+      || s.match(/\b(\d+)[-_ ]?(?:DIP|PDIP|SOIC|SOP|QFN|DFN|LQFP|TQFP)\b/)
+      || s.match(/(\d+)\s*(?:PIN|PINS|PINOUT)\b/);
+    if (!m) return 0;
+    var n = Number(m[1]);
+    return n >= 4 && n <= 64 ? n : 0;
+  }
   function libPart(c) {
     var p = (String(c.ref).match(/^[A-Za-z]+/) || [""])[0].toUpperCase();
     var v = String(c.value || "").toUpperCase();
     var f = String(c.footprint || "").toUpperCase();
     var b = v + " " + f;
-    var n = pinsOf(c.ref).length;
+    var pinList = pinsOf(c.ref);
+    var maxPin = 0;
+    pinList.forEach(function (x) { if (x > maxPin) maxPin = x; });
+    var n = Math.max(maxPin, pkgPinCount(c.footprint, p));
+    c.__lcPins = n;
     var pad = n < 10 ? "0" + n : "" + n;
     if (p.indexOf("LED") === 0) return ["Device", "LED"];
     if (p === "PR" || p === "VR" || p === "RP" || p === "RV") return ["Device", "R_Potentiometer"];
@@ -4904,7 +4919,7 @@ function __lcProtel(text){
     if (p === "Y" || p === "X" || p === "XTAL") return ["Device", "Crystal"];
     if (p === "BZ" || p === "LS") return ["Device", "Buzzer"];
     if (p === "Q" || p === "T" || p === "VT") return ["Transistor_BJT", "NPN"];
-    if (p === "U" || p === "IC") return ["Socket", "DIP"];
+    if (p === "U" || p === "IC") return ["Socket", n === 8 ? "DIP" : "DIP" + n];
     if (p === "F") return ["Device", "Fuse"];
     if (p === "R") return ["Device", "R"];
     if (p === "C") return (b.indexOf("CP") >= 0 || b.indexOf("POLAR") >= 0 || b.indexOf("电解") >= 0 || /ELE|TANT|RADIAL|RB[\d.]/.test(b) || (/\d\s*[UΜμ]F/.test(b) && !/(0402|0603|0805|1206|1210|2010|2512)/.test(b))) ? ["Device", "CP"] : ["Device", "C"];
@@ -4924,6 +4939,7 @@ function __lcProtel(text){
     var key = lp[0] + ":" + lp[1];
     libparts[key] = libparts[key] || { lib: lp[0], part: lp[1], pins: {} };
     pinsOf(c.ref).forEach(function (p) { libparts[key].pins[p] = 1; });
+    for (var q = 1; q <= (c.__lcPins || 0); q += 1) libparts[key].pins[q] = 1;
   });
   out.push("  )");
   out.push("  (libparts");

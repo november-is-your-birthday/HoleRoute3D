@@ -111,6 +111,40 @@ src = rep(src, 'children:"飞线"})]})',
 src = rep(src, 'if(b.indexOf("PUSH")>=0||b.indexOf("TACT")>=0||b.indexOf("轻触")>=0||b.indexOf("BUTTON")>=0)return"Button:SW_Push";return"Switch:SW_SPDT"',
           'if(b.indexOf("PUSH")>=0||b.indexOf("TACT")>=0||b.indexOf("KEY")>=0||b.indexOf("轻触")>=0||b.indexOf("BUTTON")>=0)return"Button:SW_Push";return"Switch:SW_SPDT"', 'S11 lcClass KEY evidence')
 
+# v3.2.5: 立创/嘉立创 Protel 网表按封装名补全引脚数。
+# 根因：Protel 网表没有 libparts 段，__lcProtel 只能用网表节点合成 libpart，
+# 于是「8 脚芯片只连了 1、2 脚」会被合成为 2 脚 DIP（3D 模型、脚距、DRC 全按 2 脚算）。
+# 修法：只对 IC 类位号（U / IC / A）+ IC 封装族（DIP / SOIC / QFN / LQFP …）从封装名提取脚数，
+# 取 max(最大已连脚号, 封装脚数) 作为声明脚数；DIP 的 part 名带脚数，避免 DIP8 与 DIP14
+# 共用同一个 libpart 被并集放大。
+PKG_FN = '''  /* 从封装名推断引脚数：立创/嘉立创的 Protel 网表不带 libparts，只看网表节点会低估脚数。 */
+  function pkgPinCount(fp, prefix) {
+    var s = String(fp || "").toUpperCase();
+    if (!s || (prefix !== "U" && prefix !== "IC" && prefix !== "A")) return 0;
+    var m = s.match(/(?:PDIP|SDIP|DIP|TSSOP|SSOP|MSOP|SOIC|SOP|VQFN|WQFN|QFN|DFN|LQFP|TQFP)[-_ ]?P?[-_ ]?(\\d+)/)
+      || s.match(/\\b(\\d+)[-_ ]?(?:DIP|PDIP|SOIC|SOP|QFN|DFN|LQFP|TQFP)\\b/)
+      || s.match(/(\\d+)\\s*(?:PIN|PINS|PINOUT)\\b/);
+    if (!m) return 0;
+    var n = Number(m[1]);
+    return n >= 4 && n <= 64 ? n : 0;
+  }
+'''
+src = rep(src, '  function libPart(c) {', PKG_FN + '  function libPart(c) {', 'S12 pkgPinCount helper')
+src = rep(src, '    var n = pinsOf(c.ref).length;\n    var pad = n < 10 ? "0" + n : "" + n;',
+          '    var pinList = pinsOf(c.ref);\n'
+          '    var maxPin = 0;\n'
+          '    pinList.forEach(function (x) { if (x > maxPin) maxPin = x; });\n'
+          '    var n = Math.max(maxPin, pkgPinCount(c.footprint, p));\n'
+          '    c.__lcPins = n;\n'
+          '    var pad = n < 10 ? "0" + n : "" + n;', 'S13 declared pin count')
+src = rep(src, '    if (p === "U" || p === "IC") return ["Socket", "DIP"];',
+          '    if (p === "U" || p === "IC") return ["Socket", n === 8 ? "DIP" : "DIP" + n];',
+          'S14 DIP part name carries pin count')
+src = rep(src, '    pinsOf(c.ref).forEach(function (p) { libparts[key].pins[p] = 1; });',
+          '    pinsOf(c.ref).forEach(function (p) { libparts[key].pins[p] = 1; });\n'
+          '    for (var q = 1; q <= (c.__lcPins || 0); q += 1) libparts[key].pins[q] = 1;',
+          'S15 fill declared pins into libpart')
+
 if CHECK_ONLY:
     print('check only, not written')
     raise SystemExit(0)
