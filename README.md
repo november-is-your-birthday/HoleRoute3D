@@ -577,6 +577,17 @@ node harness/ablate.js                   # 消融：某项优化到底有没有�
 再用 Node `vm` 加载，从而直接调用 `hi()`（放置）、`pn()`（布线）、`lt()`（DRC）。
 注入只在内存发生，不改 `src/`、不进 asar。详见 [harness/README.md](harness/README.md)。
 
+### 8.4 补丁功能回归（改导入 / 交互必用）
+
+`patches/tests/` 里是一组从**打包后的 bundle** 里抽出实装函数、在 Node `vm` 中直接调用的测试，
+覆盖网表解析、Multisim 报告、引脚拾取公式与网络编辑，改 `patches/*.js` 后逐条跑一遍即可：
+
+```bash
+for f in patches/tests/*.js; do node "$f"; done
+```
+
+每套测试末行输出 `ALL PASS` / `HAS FAILURES`，失败即非零退出码。
+
 ---
 
 ## 9. 许可与致谢

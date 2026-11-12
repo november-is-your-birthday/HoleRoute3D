@@ -55,7 +55,7 @@ function LcFpPanel(param){
       P.jsxs("label",{children:[P.jsx("span",{children:"排距（孔）"}),P.jsx("input",{type:"number",min:3,max:8,value:rowSp,onChange:function(E){var v=Number(E.target.value);setRowSp(Number.isFinite(v)?Math.max(3,Math.min(8,Math.round(v))):6)}})]})
     ]}),
     P.jsxs("div",{className:"lc-fp-row",children:[
-      P.jsx("img",{className:"lc-thumb",alt:"",src:__lcThumb("dev_board",fp.label,fp.pinCount,fp.pinOffsets)}),
+      P.jsx("img",{className:"lc-thumb",alt:"","data-lc-thumb":__lcThumbKey("dev_board",fp.label,fp.pinCount),src:__lcThumb("dev_board",fp.label,fp.pinCount,fp.pinOffsets)}),
       P.jsx("button",{className:"tool-button primary",type:"button",disabled:over,title:over?"封装超出当前洞板尺寸":"放置到板上",onClick:function(){onPick(fp),close()},children:"放置"}),
       P.jsx("button",{className:"tool-button",type:"button",onClick:function(){
         var list=saved.filter(function(x){return x.label!==fp.label}).concat([{label:fp.label,rows:Math.max(2,Math.round(rows)),rowSpacing:fp.rowSpacing}]);
@@ -81,16 +81,38 @@ function __lcNetCommit(fn){
   if(!c){return}
   c(function(p){var next=fn(p);return next===p?p:__lcNetAfter(p,next)});
 }
+/* 清掉指定网络的铜箔（走锡 / 跳线 / 失败记录）与 DRC 结果。
+ * 只要一个网络的引脚组成变了，它原来的铜箔就不再成立：
+ *   - 目标网络：多了一个脚，原布线少了这段连接；
+ *   - 源网络（引脚被移走的那个）：它的铜箔里还压着这个孔，而这个孔现在属于别的网络
+ *     → 物理上把两个网络连成一片，DRC 会报 SHORT_BETWEEN_NETS / WRONG_NET_SHORT。
+ * 所以两者都必须清，不能只清目标网络。 */
+function __lcNetClearCopper(p,names,quiet){
+  var rt=(p&&p.routing)||{};
+  var has=function(x){return names.indexOf(x)>=0};
+  var next={...rt,
+    traces:(rt.traces||[]).filter(function(t){return!has(t.net)}),
+    jumpers:(rt.jumpers||[]).filter(function(j){return!has(j.net)}),
+    failedNets:(rt.failedNets||[]).filter(function(f){return!has(f)}),
+    drc:void 0,
+    diagnostics:void 0};
+  var keep=(rt.warnings||[]).filter(function(x){return String(x).indexOf("的走锡 / 跳线已清除")<0});
+  next.warnings=quiet?keep:keep.concat(["网络 "+names.join("、")+" 的引脚已变更，该网络的走锡 / 跳线已清除，请重新布线。"]);
+  return{...p,routing:next};
+}
 function __lcNetAddTo(p,nm,ref,pin){
   var pn=String(pin);
   var changed=!1;
+  var lost=[];
   var nets=p.importState.nets.map(function(n){
     var keep=n.nodes.filter(function(nd){
       var same=nd.ref===ref&&nd.pin===pn;
       if(same)changed=!0;
       return!same;
     });
-    return keep.length===n.nodes.length?n:{...n,nodes:keep};
+    if(keep.length===n.nodes.length)return n;
+    if(n.name!==nm)lost.push(n.name);
+    return{...n,nodes:keep};
   });
   var hit=null;
   for(var i=0;i<nets.length;i+=1)if(nets[i].name===nm){hit=nets[i];break}
@@ -98,8 +120,10 @@ function __lcNetAddTo(p,nm,ref,pin){
   var nodes=hit.nodes.filter(function(nd){return!(nd.ref===ref&&nd.pin===pn)}).concat([{ref:ref,pin:pn}]);
   if(nodes.length!==hit.nodes.length)changed=!0;
   nets=nets.map(function(n){return n===hit?{...n,nodes:nodes}:n});
+  /* 引脚被移空的源网络一并移除，避免留下空网络（目标网络刚加过引脚，不会被误删） */
+  nets=nets.filter(function(n){return n.nodes.length>0||n.name===nm});
   var res={...p,importState:{...p.importState,nets:nets}};
-  if(changed&&p.routing&&p.routing.traces)res.routing={...p.routing,traces:p.routing.traces.filter(function(t){return t.net!==nm}),jumpers:p.routing.jumpers.filter(function(j){return j.net!==nm}),failedNets:p.routing.failedNets.filter(function(f){return f!==nm})};
+  if(changed)res=__lcNetClearCopper(res,[nm].concat(lost),!1);
   return res;
 }
 function __lcNetAdd(nm,ref,pin){__lcNetCommit(function(p){return __lcNetAddTo(p,nm,ref,pin)})}
@@ -124,14 +148,16 @@ function __lcNetDel(nm,ref,pin){
       return keep.length===n.nodes.length?n:{...n,nodes:keep};
     }).filter(function(n){return n.name!==nm||n.nodes.length>0});
     var res={...p,importState:{...p.importState,nets:nets}};
-    if(removed&&p.routing&&p.routing.traces)res.routing={...p.routing,traces:p.routing.traces.filter(function(t){return t.net!==nm}),jumpers:p.routing.jumpers.filter(function(j){return j.net!==nm}),failedNets:p.routing.failedNets.filter(function(f){return f!==nm})};
+    if(removed)res=__lcNetClearCopper(res,[nm],!1);
     return res;
   })
 }
 function __lcNetDelNet(nm){
   __lcNetCommit(function(p){
     var nets=p.importState.nets.filter(function(n){return n.name!==nm});
-    return{...p,importState:{...p.importState,nets:nets},routing:{...p.routing,traces:p.routing.traces.filter(function(t){return t.net!==nm}),jumpers:p.routing.jumpers.filter(function(j){return j.net!==nm}),failedNets:p.routing.failedNets.filter(function(f){return f!==nm}),drc:void 0,diagnostics:void 0},selectedNetName:p.selectedNetName===nm?void 0:p.selectedNetName};
+    var res={...p,importState:{...p.importState,nets:nets},selectedNetName:p.selectedNetName===nm?void 0:p.selectedNetName};
+    /* 整个网络被删除属于用户主动操作，不必再提示「引脚已变更」 */
+    return __lcNetClearCopper(res,[nm],!0);
   })
 }
 function __lcNetAutoName(p){
