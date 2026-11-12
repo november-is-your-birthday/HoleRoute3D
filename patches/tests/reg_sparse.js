@@ -2,8 +2,10 @@
 'use strict';
 const vm = require('vm');
 const fs = require('fs');
-const p32 = fs.readFileSync('C:/Users/kai/Desktop/ProtoRoute3D-v2.0.0/patches/patch_multisim.js', 'utf8');
-const bundle = fs.readFileSync('C:/Users/kai/Desktop/ProtoRoute3D-v2.0.0/src/dist/assets/index-C0NrTOjn.js', 'utf8');
+const path = require('path');
+const ROOT = path.join(__dirname, '../..');
+const p32 = fs.readFileSync(path.join(ROOT, 'patches/patch_multisim.js'), 'utf8');
+const bundle = fs.readFileSync(path.join(ROOT, 'src/dist/assets/index-C0NrTOjn.js'), 'utf8');
 function grab(src, name) {
   const i = src.indexOf('function ' + name + '(');
   const b = src.indexOf('{', src.indexOf(')', i));
