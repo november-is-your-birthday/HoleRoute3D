@@ -69,8 +69,6 @@ assert(twice.routing.warnings.filter(w => String(w).indexOf('引脚位置已改�
 
 // 3) 关键接线
 const wires = [
-  ['r(vt,K.ctrlKey||K.metaKey),l(void 0)', '点击元件时把 Ctrl 传给选择入口'],
-  ['r(Tt?void 0:st.componentId,Tt?!1:(K.ctrlKey||K.metaKey)),l(st)', '点击引脚时把 Ctrl 传给选择入口'],
   ['[__lcSelArr,__lcSelSet]=qt.useState([])', '存在多选集合 state'],
   ['(window.__lcSelIds||[]).indexOf(c.id)>=0', '多选高亮'],
   ['function __lcMountAll(to)', '组合拔起/放置'],
@@ -80,8 +78,60 @@ const wires = [
   ['rotateSpace:"Space"', '空格快捷键'],
   ['unmountAll:"Shift+U"', '全部拔起快捷键'],
   ['if(c.id!==Q&&ids.indexOf(c.id)<0)return c;', '组合移动按同一增量平移'],
+  // ---- v3.3.1：用户反馈「多选操作无效」的两个真实断点，必须一直在 ----
+  ['else if(add==="keep")next=prev.indexOf(Q)>=0?prev.slice():prev.concat([Q]);', '选择入口支持 keep（保持选集不动作）'],
+  ['r(Tt?((window.__lcSelIds||[]).indexOf(st.componentId)>=0?st.componentId:void 0):st.componentId',
+    '引脚命中分支：Shift 拖已选中成员不清空选集'],
+  ['(ht&&(window.__lcSelIds||[]).indexOf(vt)>=0?"keep":!1)', '元件体命中分支：Shift 拖已选中成员保持选集'],
+  ['if((K.ctrlKey||K.metaKey)&&T.current){', 'Ctrl 点击时抑制 OrbitControls 的平移/旋转'],
+  ['(K.ctrlKey||K.metaKey)||r(void 0)', 'Ctrl 点空白不清空选集'],
 ];
 wires.forEach(([needle, label]) => assert(bundle.indexOf(needle) >= 0, label));
+
+// 拖动已放置元件不再要求先拔起（否则用户多选后按 Shift 拖板上元件毫无反应）
+assert(bundle.indexOf('ht&&vt&&!vt.mounted&&!df(ht,ot.current)') < 0,
+  '拖动不再硬性要求未放置（mounted）');
+assert(bundle.indexOf('ht&&Tt&&z&&!df(z.position,Tt)&&c(ht,Tt)') >= 0,
+  '已放置元件拖动同样提交位置');
+
+// 4) 组合移动的计算：z() 必须把同一增量应用到整个选集
+const zSrc = grabFn(bundle, 'function z(Q,rt){');
+const zBox = {
+  window: { __lcSelIds: ['a', 'b'] }, Math, JSON, String, Number, Array, Object, console,
+};
+vm.createContext(zBox);
+vm.runInContext(grabFn(bundle, 'function __lcSelIdsOf(') + grabFn(bundle, 'function __lcAfterTransform('), zBox);
+zBox.window.__lcSelIds = ['a', 'b'];
+zBox.__lcSelIds = zBox.window.__lcSelIds;
+zBox.H = (fn) => { zBox.__out = fn(zBox.__proj); };
+vm.runInContext(zSrc, zBox);
+zBox.__proj = {
+  components: [
+    { id: 'a', name: 'A', mounted: true, position: [2, 3] },
+    { id: 'b', name: 'B', mounted: true, position: [10, 12] },
+    { id: 'c', name: 'C', mounted: true, position: [20, 20] },
+  ],
+  routing: { traces: [], jumpers: [], drc: { errors: [] }, warnings: [] },
+};
+vm.runInContext('z("a",[5,9])', zBox);
+const moved = zBox.__out.components;
+assert(eq(moved.find(c => c.id === 'a').position, [5, 9]), '被拖元件移动到目标孔');
+assert(eq(moved.find(c => c.id === 'b').position, [13, 18]), '同选集元件按 +3/+6 同步平移');
+assert(eq(moved.find(c => c.id === 'c').position, [20, 20]), '未选中元件不动');
+assert(zBox.__out.routing.warnings.some(w => String(w).indexOf('引脚位置已改变') >= 0),
+  '组合移动后提示重跑 DRC');
+
+// 选集为空时回落到主选中，仍然只移动一个
+zBox.window.__lcSelIds = [];
+zBox.__proj = {
+  components: [
+    { id: 'a', name: 'A', mounted: false, position: [0, 0] },
+    { id: 'b', name: 'B', mounted: false, position: [4, 4] },
+  ],
+  routing: { traces: [], jumpers: [], warnings: [] },
+};
+vm.runInContext('z("a",[1,1])', zBox);
+assert(eq(zBox.__out.components.find(c => c.id === 'b').position, [4, 4]), '空选集时不影响其它元件');
 
 // 组合旋转必须是绕各自 1 脚（position 不动，只改 rotation）
 const gt = grabFn(bundle, 'function Gt(cw)');

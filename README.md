@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/november-is-your-birthday/HoleRoute3D/releases/latest"><img alt="download" src="https://img.shields.io/badge/download-v3.3.0-2ea043?style=for-the-badge"></a>
+  <a href="https://github.com/november-is-your-birthday/HoleRoute3D/releases/latest"><img alt="download" src="https://img.shields.io/badge/download-v3.3.1-2ea043?style=for-the-badge"></a>
   <img alt="platform" src="https://img.shields.io/badge/platform-Windows%20x64-0078D4">
   <img alt="base" src="https://img.shields.io/badge/upstream-v2.0.0-6b7280">
 </p>
@@ -86,14 +86,14 @@
 ### 2.1 普通用户：下载 Release，解压即用（推荐）
 
 1. 打开 **[Releases](https://github.com/november-is-your-birthday/HoleRoute3D/releases/latest)** 页面；
-2. 下载 `ProtoRoute3D-v3.3.0-cn-win-x64.zip`（约 130 MB）；
+2. 下载 `ProtoRoute3D-v3.3.1-cn-win-x64.zip`（约 130 MB）；
 3. **完整解压**到任意目录，例如 `D:\HoleRoute3D`；
 4. 双击其中的 `ProtoRoute 3D.exe`。
 
 包里已经带了完整的 Electron 运行时、依赖和打好补丁的 `app.asar`，
 **不需要安装 Python / Node，也不需要再下载上游版本打补丁**。
 
-- 窗口标题显示 **ProtoRoute 3D v3.3.0** 就说明版本正确（程序文件与 exe 名沿用上游内部命名，
+- 窗口标题显示 **ProtoRoute 3D v3.3.1** 就说明版本正确（程序文件与 exe 名沿用上游内部命名，
   项目名以「洞洞板布线 HoleRoute3D」为准）；
 - 首次运行 Windows 可能弹「已保护你的电脑」，点「更多信息 → 仍要运行」即可（本版没有代码签名）；
 - 解压目录里有一份 `使用说明.txt`，包含嘉立创导出步骤、基本流程与快捷键。
@@ -125,7 +125,7 @@ python build_asar.py           # 正式打包，旧包自动备份为 app.asar.p
 
 ```bash
 python tools/make_release.py --check   # 统计会打包哪些文件
-python tools/make_release.py           # 生成 release/ProtoRoute3D-v3.3.0-cn-win-x64.zip
+python tools/make_release.py           # 生成 release/ProtoRoute3D-v3.3.1-cn-win-x64.zip
 ```
 
 脚本只收运行本体（exe / dll / pak / locales / resources/app.asar 等）+ `docs/使用说明.txt`，
@@ -430,7 +430,7 @@ SPICE 网表不含引脚号，请用 Reports 菜单导出。格式细节见 `doc
 | **自动布线** | 5 轮 + 有限拆线重布 | 增加 **pull-tight 后优化**（逐段拆开重布，更优才保留）→ 拐弯 −2~3 |
 | **继续布线** | 无此功能；「自动布线」会重算全部网络，上一轮结果被覆盖 | 新增「继续布线」：保留全部已有走锡/跳线，只补未连通网络，并按全量引脚重算 DRC |
 | **工程工具** | 无 | `build_asar.py` 打包脚本、`harness/` 离线回归（基准/消融/独立校验/飞线回归）、GitHub Actions |
-| **分发形态** | 只有源码仓库，用户需自行构建；无现成安装包 | 提供 **v3.3.0 免安装压缩包**（含 Electron 运行时），下载解压双击即用 |
+| **分发形态** | 只有源码仓库，用户需自行构建；无现成安装包 | 提供 **v3.3.1 免安装压缩包**（含 Electron 运行时），下载解压双击即用 |
 | **文档** | 一份 README | README + CHANGELOG + NOTICE + 使用说明.txt + Release 说明 |
 
 ### 5.2 我没有改的部分
@@ -548,7 +548,7 @@ tools/restore_official.bat              还原官方原版
 harness/                                离线回归（Node 运行，不需要启动 GUI）
 .github/workflows/verify.yml            CI：语法检查 + 快速回归
 docs/使用说明.txt                        随发布包分发给最终用户的上手说明
-docs/release-v3.3.0.md                  GitHub Release 页面文案（历史：release-v3.2.5.md、release-v3.2.4.md、release-v3.0.0.md）
+docs/release-v3.3.1.md                  GitHub Release 页面文案（历史：release-v3.3.0.md、release-v3.2.5.md、release-v3.0.0.md）
 docs/screenshots/                       README 用的界面截图
 ```
 

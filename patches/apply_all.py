@@ -261,6 +261,7 @@ NEW_TT = '''function Tt(Q,add){
   var next;
   if(!Q)next=[];
   else if(!add)next=[Q];
+  else if(add==="keep")next=prev.indexOf(Q)>=0?prev.slice():prev.concat([Q]);
   else next=prev.indexOf(Q)>=0?prev.filter(function(x){return x!==Q}):prev.concat([Q]);
   window.__lcSelIds=next;
   __lcSelSet(next);
@@ -381,6 +382,17 @@ NEW_Z = '''function z(Q,rt){
 '''
 src = rep_fn(src, 'function z(Q,rt){', NEW_Z, 'M6 group move')
 
+# v3.3.1：拖动被 !mounted 硬锁，用户多选后按 Shift 拖板上元件毫无反应（必须先 U 拔起）。
+# 原软件对单个元件也是这样限制的，但既然多选的目标是「和操作单个一样顺手」，这里统一放开：
+# Shift + 拖动可直接移动已放置元件（mounted 保持不变），走锡会留在旧孔，
+# __lcAfterTransform 已会写入「引脚位置已改变，请重跑 DRC」的提示。
+src = rep(src, 'ht&&vt&&!vt.mounted&&!df(ht,ot.current)&&(me(vt,ht),ot.current=ht)',
+          'ht&&vt&&!df(ht,ot.current)&&(me(vt,ht),ot.current=ht)',
+          'M14 allow dragging mounted components')
+src = rep(src, 'ht&&Tt&&z&&!z.mounted&&!df(z.position,Tt)&&c(ht,Tt)',
+          'ht&&Tt&&z&&!df(z.position,Tt)&&c(ht,Tt)',
+          'M15 commit drag on mounted components')
+
 # v3.3: 撤销步数上限 50 → 可配置（默认 200）+ 重做栈
 src = rep(src, 'v.current=[...v.current.slice(-49),rt],S(v.current.length),G(Ft)',
           'v.current=[...v.current.slice(-(__lcHistoryLimit()-1)),rt],window.__lcRedo=[],S(v.current.length),G(Ft)',
@@ -418,9 +430,47 @@ src = rep(src, '}),c.id===e){const h=new Vt(new Rr(.4,.5,36)',
 src = rep(src, 'r(Tt?void 0:st.componentId),l(st);return',
           'r(Tt?void 0:st.componentId,Tt?!1:(K.ctrlKey||K.metaKey)),l(st);return',
           'M8 ctrl click on pin')
+# v3.3.1 实测：Tt 是「拖动修饰键（默认 Shift）是否按下」，原意是「按 Shift 时不选中元件、改为拖引脚」。
+# 但多选后必须按 Shift 才能拖动，于是 pointerup 之前选择集就被 r(void 0) 清空，
+# 组合移动永远只动被拖的那一个（Q1/R1 位置不变）。修法：Shift 点中「已在选集内」的成员时
+# 用 "keep" 模式保持选集不变；Shift 点空格子/未选中元件仍按原逻辑清空（不影响拖引脚）。
+src = rep(src, 'r(Tt?void 0:st.componentId,Tt?!1:(K.ctrlKey||K.metaKey))',
+          'r(Tt?((window.__lcSelIds||[]).indexOf(st.componentId)>=0?st.componentId:void 0):st.componentId,'
+          'Tt?((window.__lcSelIds||[]).indexOf(st.componentId)>=0?"keep":!1):(K.ctrlKey||K.metaKey))',
+          'M8b shift drag keeps multi selection')
 src = rep(src, 'ht&&(K.currentTarget.setPointerCapture(K.pointerId),xe(!1)),r(vt),l(void 0)',
           'ht&&(K.currentTarget.setPointerCapture(K.pointerId),xe(!1)),r(vt,K.ctrlKey||K.metaKey),l(void 0)',
           'M9 ctrl click on component')
+# v3.3.1 实测：点击元件体（不是引脚环）走的是上面这条 else 分支，dt() 返回空 → 选择调用原本不认
+# 「已在选集内」。于是多选后按住 Shift 开始拖动，第一帧就把选集重置成 1 个，组合移动永远是单件。
+# 与 M8b 同一套语义：Shift + 已在选集内 → keep；Ctrl/Meta → 追加/取消；其余 → 单选。
+src = rep(src, 'xe(!1)),r(vt,K.ctrlKey||K.metaKey),l(void 0)',
+          'xe(!1)),r(vt,(K.ctrlKey||K.metaKey)?!0:'
+          '(ht&&(window.__lcSelIds||[]).indexOf(vt)>=0?"keep":!1)),l(void 0)',
+          'M9b shift drag keeps selection on body hit')
+
+# v3.3.1 实测发现的两个真实缺陷（用户反馈「多选不生效」的直接原因）：
+# ① three.js OrbitControls 把「Ctrl + 左键」映射成 PAN，Ctrl 点选元件时视角会跟着平移，
+#    第二下点击就落在别处 → 表现为「多选怎么点都不对」。
+#    修法：Ctrl / Cmd 按下时临时关掉 controls 的 rotate 与 pan，pointerup 恢复。
+# ② Ctrl 点在空白处会走 r(void 0) 把整个选择集清空，手一抖前功尽弃。
+#    修法：带修饰键时空点击保留已有选择，只有普通点击空白才清空。
+src = rep(src, 'onPointerDown:K=>{if(K.button===2)return;',
+          'onPointerDown:K=>{if(K.button===2)return;'
+          'if((K.ctrlKey||K.metaKey)&&T.current){'
+          'var __lcCtl=T.current;'
+          'if(!window.__lcCtlHold)window.__lcCtlHold={rotate:!!__lcCtl.enableRotate,pan:!!__lcCtl.enablePan};'
+          '__lcCtl.enableRotate=!1;__lcCtl.enablePan=!1;'
+          'var __lcCtlEnd=function(){'
+          'document.removeEventListener("pointerup",__lcCtlEnd,!0);'
+          'var __hc=window.__lcCtlHold,__cc=T.current;'
+          'if(__hc&&__cc){__cc.enableRotate=__hc.rotate;__cc.enablePan=__hc.pan}'
+          'window.__lcCtlHold=null};'
+          'document.addEventListener("pointerup",__lcCtlEnd,!0)}',
+          'M12 ctrl suppresses orbit pan/rotate')
+src = rep(src, 'else k.current=void 0,ot.current=void 0,r(void 0),l(void 0)',
+          'else k.current=void 0,ot.current=void 0,(K.ctrlKey||K.metaKey)||r(void 0),l(void 0)',
+          'M13 ctrl click empty keeps selection')
 
 # v3.3: 工具栏「全部拔起」
 src = rep(src, 'children:"继续布线"})]})',
