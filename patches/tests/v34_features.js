@@ -188,5 +188,52 @@ assert(state.project.board.width === 5 && toasts.some(t => t.indexOf('下限') >
 vm.runInContext('__lcBoardGrow("left",1)', gb);
 assert(state.project.board.width === 10 && toasts.some(t => t.indexOf('面包板') >= 0), '面包板不走行列增删');
 
+/* ---------- 5) v3.4.1：DRC 对「没有网络」的焊盘与 0Ω 未连通的措辞 ---------- */
+assert(bundle.indexOf('if(!d)return{ref:l.name,pin:h,grid:g,actualNets:S,status:"NO_NET_UNUSED"};') >= 0,
+  '没有指派过网络的焊盘 → 未使用引脚（warning），不再报错网短路');
+assert(bundle.indexOf('if(!d)return{ref:l.name,pin:h,grid:g,actualNets:S,status:S.length>0?') < 0,
+  '旧的「有铜箔就报 WRONG_NET_SHORT」分支已移除');
+assert(bundle.indexOf('hint:(!x&&__lcZeroOhm(l))') >= 0, '0Ω 引脚未连通时给出原因提示');
+assert(bundle.indexOf('${M.hint||""}') >= 0, 'DRC 文案拼接提示');
+
+// 直接跑 sO()：三种输入分别对应 无网络 / 0Ω 未连通 / 普通过电阻未连通
+const sBox = {
+  Math, JSON, String, Number, Array, Object, console,
+  oe: (x, y) => x + ',' + y,
+  Si: (c, pin) => {
+    const o = (c.pinOffsets || [])[pin - 1] || [0, 0];
+    return [c.position[0] + o[0], c.position[1] + o[1]];
+  },
+  // d0(孔, 并查集, 已连通集合)：真实实现是 e.has(孔) ? t.find(孔) : 'open:孔'
+  d0: (k, t, e) => (e && typeof e.has === 'function' && e.has(k) ? 'g:' + k : 'open:' + k),
+};
+vm.createContext(sBox);
+vm.runInContext(grabFn(bundle, 'function __lcOhm(') + grabFn(bundle, 'function __lcZeroOhm(') +
+  grabFn(bundle, 'function sO('), sBox);
+
+const ZERO = { name: 'R24', kind: 'resistor', value: '0Ω', mounted: true, position: [4, 4], pinOffsets: [[0, 0], [3, 0]] };
+const PLAIN = Object.assign({}, ZERO, { name: 'R1', value: '1kΩ' });
+const runSO = (comps, eps, copper) => vm.runInContext('sO(__c,__e,__m,__s,__r)', Object.assign(sBox, {
+  __c: comps,
+  __e: new Map(eps),
+  __m: new Map(copper),
+  __s: new Set(copper.map(([k]) => k)),
+  __r: new Set(),
+}));
+// ① 完全没网络、但有铜箔压在上面
+let st = runSO([Object.assign({}, ZERO, { name: 'R25' })], [], [['4,4', new Set(['$1N39'])]]);
+assert(st[0].status === 'NO_NET_UNUSED', '无网络焊盘有铜箔 → 未使用引脚，实际 ' + st[0].status);
+// ② 0Ω 引脚在网络上但没连通（两个组）
+st = runSO([ZERO], [['R24:1', { ref: 'R24', pin: 1, net: 'GND', grid: [4, 4] }],
+  ['R24:2', { ref: 'R24', pin: 2, net: 'GND', grid: [7, 4] }]],
+  [['4,4', new Set(['GND'])], ['7,4', new Set(['GND'])]]);
+assert(st.some(x => x.status === 'REQUIRED_UNCONNECTED'), '0Ω 未连通时状态为 REQUIRED_UNCONNECTED');
+assert(st.filter(x => x.hint).length >= 1 && /0Ω/.test(st.find(x => x.hint).hint), '0Ω 未连通时文案说明「只连自身两脚」');
+// ③ 普通电阻未连通不应该带这个提示
+st = runSO([PLAIN], [['R1:1', { ref: 'R1', pin: 1, net: 'GND', grid: [4, 4] }],
+  ['R1:2', { ref: 'R1', pin: 2, net: 'GND', grid: [7, 4] }]],
+  [['4,4', new Set(['GND'])], ['7,4', new Set(['GND'])]]);
+assert(!st.some(x => x.hint), '普通电阻不出现 0Ω 提示');
+
 console.log(res.join('\n'));
 console.log(res.every(r => r.startsWith('PASS')) ? 'ALL PASS' : 'HAS FAILURES');

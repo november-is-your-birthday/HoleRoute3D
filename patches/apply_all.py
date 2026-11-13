@@ -718,8 +718,30 @@ src = rep(src, 'for(var ji=0;ji<jumpers.length;ji+=1){var jm=jumpers[ji];if(jm&&
 src = rep(src, 'P.jsx("span",{children:O.mounted?"已在板上":"已拔起"})',
           'P.jsx("span",{children:O.mounted?"已在板上":"已拔起"}),'
           '__lcZeroOhm(O)&&P.jsx("span",{title:"0Ω 电阻：1、2 脚视为同一节点（同网络时），'
-          '飞线不再连接它们，自动布线也不会为它们铺铜",children:"0Ω 视为导线"})',
+          '飞线不再在它们之间画线、自动布线不会为它们铺铜；'
+          '但每一端仍需要铜箔接到本网络，否则那一端就是悬空的",children:"0Ω 视为导线"})',
           'U10 inspector 0-ohm hint')
+
+# =================================================================
+# v3.4.1：DRC 对「没有网络」的焊盘别再报错网短路
+# 根因：sO() 里引脚在两个映射里都找不到（= 从没被指派过网络）时，
+#       只要有铜箔压在上面就判 WRONG_NET_SHORT —— 于是「期望 无网络，实际 $1N39」这种
+#       自相矛盾的错误。没有期望网络就谈不上「错网」，降级成 warning（未使用引脚）。
+# =================================================================
+src = rep(src, 'if(!d)return{ref:l.name,pin:h,grid:g,actualNets:S,status:S.length>0?"WRONG_NET_SHORT":"NO_NET_UNUSED"};',
+          'if(!d)return{ref:l.name,pin:h,grid:g,actualNets:S,status:"NO_NET_UNUSED"};',
+          'V1 unassigned pad is a warning')
+# 0Ω 元件引脚未连通时，把「0Ω 只连自身两脚」写进错误文案，避免误解成「0Ω 能替两端接线」
+src = rep(src,
+          'return{ref:d.ref,pin:d.pin,pinName:d.role,grid:g,expectedNet:v,actualNets:S,'
+          'status:x?"CONNECTED":"REQUIRED_UNCONNECTED"}',
+          'return{ref:d.ref,pin:d.pin,pinName:d.role,grid:g,expectedNet:v,actualNets:S,'
+          'status:x?"CONNECTED":"REQUIRED_UNCONNECTED",'
+          'hint:(!x&&__lcZeroOhm(l))?"（0Ω 只把自身 1、2 脚连起来，这一端仍需要铜箔接到网络）":void 0}',
+          'V2 0-ohm unconnected hint')
+src = rep(src, '，位置 ${M.grid[0]},${M.grid[1]}`',
+          '，位置 ${M.grid[0]},${M.grid[1]}${M.hint||""}`',
+          'V3 drc message carries hint')
 
 if CHECK_ONLY:
     print('check only, not written')
