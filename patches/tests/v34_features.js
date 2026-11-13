@@ -39,11 +39,17 @@ const wires = [
   ['window.__lcBoardGrow&&window.__lcBoardGrow("left",1)', '左侧加列按钮'],
   ['window.__lcBoardGrow&&window.__lcBoardGrow("right",-1)', '右侧减列按钮'],
   ['__lcBridgeTraces(Q,q)', '自动布线注入零欧桥接'],
-  ['J0(Q.board,__lcRoutingBridges(Q),rt,Q.components)', 'DRC 看到零欧桥接'],
+  ['(__lcDrcUnion(s,c,_,S,oe)),', 'DRC 内部按元件并接 0Ω 两脚（不占中间孔）'],
   ['__lcContinuePlan(Q.board,eps,Q.components,__lcBridgeTraces(', '继续布线注入零欧桥接'],
   ['for(var __li=0;__li<__lb.length;__li+=1)uni(key(__lb[__li].from),key(__lb[__li].to));', '飞线并查集合并零欧两端'],
   ['__lcZeroOhm(O)&&P.jsx("span"', '属性面板标注「0Ω 视为导线」'],
 ];
+// v3.4.2：DRC 不能再收到「铺」在两焊盘之间的虚拟走锡，否则中间孔会被误判短路
+assert(bundle.indexOf('J0(Q.board,__lcRoutingBridges(Q)') < 0,
+  'DRC 不再接收虚拟桥接走锡（只在内部并连通性）');
+assert(bundle.indexOf('function __lcDrcUnion(comps, byPin, uf, cells, keyFn)') >= 0,
+  '存在只并连通性、不占孔的桥接辅助函数');
+
 wires.forEach(([needle, label]) => assert(bundle.indexOf(needle) >= 0, label));
 
 /* ---------- 2) 零欧解析 ---------- */
@@ -234,6 +240,29 @@ st = runSO([PLAIN], [['R1:1', { ref: 'R1', pin: 1, net: 'GND', grid: [4, 4] }],
   ['R1:2', { ref: 'R1', pin: 2, net: 'GND', grid: [7, 4] }]],
   [['4,4', new Set(['GND'])], ['7,4', new Set(['GND'])]]);
 assert(!st.some(x => x.hint), '普通电阻不出现 0Ω 提示');
+
+/* ---------- 6) v3.4.2：虚拟桥接不能落盘，也不能被 DRC 当成真铜箔 ---------- */
+assert(bundle.indexOf('t=__lcStripBridges(t);') >= 0, 'DRC 入口兜底过滤残留的假桥接');
+assert(bundle.indexOf('const Zt=__lcStripBridges(f4(yt,zt))') >= 0, '自动布线结果里剔掉假桥接');
+assert(bundle.indexOf('var Zt=__lcStripBridges(f4(pl,Er(Q)))') >= 0, '继续布线结果里剔掉假桥接');
+
+const stBox = { Math, JSON, String, Number, Array, Object, console };
+vm.createContext(stBox);
+vm.runInContext(grabFn(bundle, 'function __lcStripBridges('), stBox);
+const strip = v => vm.runInContext('__lcStripBridges(__v)', Object.assign(stBox, { __v: v }));
+const rtIn = {
+  traces: [
+    { id: 't1', net: 'N1', points: [[0, 0], [1, 0]] },
+    { id: '__lcBridge:R24', net: 'GND', points: [[2, 2], [5, 2]], __lcBridge: true },
+  ],
+  jumpers: [{ id: 'j1', net: 'N2', from: [0, 4], to: [2, 4] }],
+};
+const rtOut = strip(rtIn);
+assert(rtOut.traces.length === 1 && rtOut.traces[0].id === 't1', '假桥接被剔除，真实走锡保留');
+assert(rtOut.jumpers.length === 1, '跳线不受影响');
+assert(strip({ traces: [{ id: 'a', points: [] }], jumpers: [] }).traces.length === 1, '没有桥接时不改动');
+const same = { traces: [], jumpers: [] };
+assert(strip(same) === same, '没有需要剔除的项时返回原对象（避免多余提交）');
 
 console.log(res.join('\n'));
 console.log(res.every(r => r.startsWith('PASS')) ? 'ALL PASS' : 'HAS FAILURES');

@@ -184,6 +184,37 @@ function __lcRoutingBridges(p) {
   return Object.assign({}, rt, { traces: __lcBridgeTraces(p, rt.traces) });
 }
 
+/* 布线结果落盘前把虚拟桥接剔掉。
+ * 布线器会把输入的走锡原样回显到结果里，于是 __lcBridge 那条假铜箔会被写进工程，
+ * 之后任何一次 DRC 都会把它当成真实铜箔，在中间孔上与别的网络判短路。
+ * 桥接只需要在「本次布线计算」里存在，绝不能进工程。 */
+function __lcStripBridges(rt) {
+  if (!rt) return rt;
+  var isB = function (x) {
+    return !!x && (x.__lcBridge === true || String(x.id || "").indexOf("__lcBridge:") === 0);
+  };
+  var tr0 = rt.traces || [], jm0 = rt.jumpers || [];
+  var tr = tr0.filter(function (t) { return !isB(t); });
+  var jm = jm0.filter(function (j) { return !isB(j); });
+  if (tr.length === tr0.length && jm.length === jm0.length) return rt;
+  return Object.assign({}, rt, { traces: tr, jumpers: jm });
+}
+
+/* DRC 用：把每个 0Ω 元件（已放置、两脚同网络）的两个焊盘并进并查集。
+ * 只动连通性 —— 不往两个焊盘之间「铺」铜箔，所以不会占用中间孔、
+ * 也就不会在中间孔上误判「不同网络短路」。 */
+function __lcDrcUnion(comps, byPin, uf, cells, keyFn) {
+  var zeros = (comps || []).filter(function (c) { return c && c.mounted && __lcZeroOhm(c); });
+  zeros.forEach(function (c) {
+    var a = byPin.get(c.name + ":1"), b = byPin.get(c.name + ":2");
+    if (!a || !b || !a.net || a.net !== b.net) return;
+    var ka = keyFn(a.grid[0], a.grid[1]), kb = keyFn(b.grid[0], b.grid[1]);
+    uf.add(ka); uf.add(kb);
+    if (cells) { cells.add(ka); cells.add(kb); }
+    uf.union(ka, kb);
+  });
+}
+
 window.__lcBoardGrow = __lcBoardGrow;
 window.__lcZeroOhm = __lcZeroOhm;
 window.__lcOhm = __lcOhm;

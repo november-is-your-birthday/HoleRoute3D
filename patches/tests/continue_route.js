@@ -54,7 +54,8 @@ function run(project) {
   let out = project;
   sandbox.H = fn => { out = fn(out); };
   sandbox.__lcToast = () => {};
-  vm.runInContext(grabFn(bundle, 'function __lcContinueRoute('), sandbox);
+  vm.runInContext(grabFn(bundle, 'function __lcStripBridges(')
+    + grabFn(bundle, 'function __lcContinueRoute('), sandbox);
   vm.runInContext('__lcContinueRoute()', sandbox);
   return out;
 }
@@ -114,6 +115,12 @@ assert(out.routing.jumpers.length === newRouting.jumpers.length,
 
 // 9) v3.4：继续布线的入参必须经过零欧桥接注入（否则 0Ω 元件两侧会被重复布线）
 assert((sandbox.__bridgeCalls || 0) > 0, '继续布线把走锡入参交给零欧桥接处理');
+
+// 10) v3.4.2：虚拟桥接绝不能跟着结果落盘
+const withBridge = mk();
+withBridge.routing.traces = [{ id: '__lcBridge:R24', net: 'GND', points: [[0, 0], [3, 0]], __lcBridge: true }];
+out = run(withBridge);
+assert(!(out.routing.traces || []).some(t => t && t.__lcBridge), '继续布线结果里没有虚拟桥接走锡');
 
 console.log(res.join('\n'));
 console.log(res.every(r => r.startsWith('PASS')) ? 'ALL PASS' : 'HAS FAILURES');

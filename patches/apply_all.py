@@ -696,15 +696,12 @@ src = rep(src,
           'U4 board grow buttons')
 
 # --- 4) 零欧电阻按导线处理 ---------------------------------------------
-# 布线 / DRC / 继续布线的入参里追加虚拟桥接（__lcBridge，locked、不渲染、不落盘），
+# 布线 / 继续布线的入参里追加虚拟桥接（__lcBridge，locked、不渲染、不落盘），
 # 飞线的并查集也把同一网络的两个脚并起来。详见 patch_v34_main.js 注释。
 src = rep(src, 'yt=Y4(Q.board,rt,Q.components,q,zt,void 0,Bt)',
           'yt=Y4(Q.board,rt,Q.components,__lcBridgeTraces(Q,q),zt,void 0,Bt)',
           'U5 autoroute passes bridges')
-src = rep(src, 'const rt=Io(Q.importState,Q.components),at=J0(Q.board,Q.routing,rt,Q.components)',
-          'const rt=Io(Q.importState,Q.components),'
-          'at=J0(Q.board,__lcRoutingBridges(Q),rt,Q.components)',
-          'U7 drc sees bridges')
+# v3.4.2：DRC 不再接收虚拟走锡（原来的 U7 已删除，见下方 V4 注释）
 src = rep(src, 'var pl=__lcContinuePlan(Q.board,eps,Q.components,Q.routing.traces||[],oldJ,Er(Q));',
           'var pl=__lcContinuePlan(Q.board,eps,Q.components,'
           '__lcBridgeTraces(Q,Q.routing.traces||[]),oldJ,Er(Q));',
@@ -742,6 +739,32 @@ src = rep(src,
 src = rep(src, '，位置 ${M.grid[0]},${M.grid[1]}`',
           '，位置 ${M.grid[0]},${M.grid[1]}${M.hint||""}`',
           'V3 drc message carries hint')
+
+# =================================================================
+# v3.4.2：0Ω 的桥接改为「只并连通性、不占中间孔」
+# v3.4.0 把桥接当成一条真实走锡塞进 DRC，它在两个焊盘之间铺出一串中间孔
+# （11,32 → 12,32 → 13,32 → 14,32）。若中间孔上有别的网络（这里 12,32 是 $1N39），
+# DRC 就判 GND 与 $1N39 短路 —— 凭空多出 2 条假错误，用户看到的「原先正常连接变成错的」。
+# 物理事实：0Ω 只连通自身两个焊盘，中间那几格空间不属于任何铜箔。
+# 修法：在 J0 内部按元件直接把两个焊盘并进并查集（_ ），只动连通性，
+# 不碰 d（每个孔上的期望网络）与走锡几何检查，因此不会产生短路 / 重叠误报。
+# 放在 J0 里而不是调用点，是为了让「DRC 检查按钮」与「自动布线内部的 DRC」走同一套。
+# =================================================================
+src = rep(src, 't.traces.forEach(M=>{const O=Dr(M.points),C=z2(M.net,O,h,d);',
+          '(__lcDrcUnion(s,c,_,S,oe)),'
+          't.traces.forEach(M=>{const O=Dr(M.points),C=z2(M.net,O,h,d);',
+          'V4 drc unions 0-ohm pads without claiming holes')
+# 布线器会把输入走锡回显到结果里，假桥接会被写进工程 → 落盘前剔掉
+src = rep(src, 'const Zt=f4(yt,zt);return{...Q,routing:{...Zt,warnings:[...Zt.warnings,...Ft]}}',
+          'const Zt=__lcStripBridges(f4(yt,zt));return{...Q,routing:{...Zt,warnings:[...Zt.warnings,...Ft]}}',
+          'V5 strip bridge traces from autoroute result')
+src = rep(src, 'var Zt=f4(pl,Er(Q));',
+          'var Zt=__lcStripBridges(f4(pl,Er(Q)));',
+          'V6 strip bridge traces from continue-route result')
+# 兜底：老工程里若已残留假桥接（3.4.0/3.4.1 布线过），DRC 也当它不存在
+src = rep(src, 'function J0(i,t,e,s){const r=Zi(i),',
+          'function J0(i,t,e,s){t=__lcStripBridges(t);const r=Zi(i),',
+          'V7 drc ignores persisted bridge traces')
 
 if CHECK_ONLY:
     print('check only, not written')
