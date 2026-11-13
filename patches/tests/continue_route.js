@@ -43,6 +43,8 @@ const sandbox = {
   Io: () => [{ net: 'N1', ref: 'R1', pin: 1, grid: [1, 1] }],
   Er: () => ({}),
   __lcContinuePlan: () => (planResult.ok ? { plan: 1 } : null),
+  // v3.4：继续布线的入参要经过零欧桥接注入；这里只验证「注入被调用且不改变跳线合并语义」
+  __lcBridgeTraces: (p, tr) => { sandbox.__bridgeCalls = (sandbox.__bridgeCalls || 0) + 1; return tr || []; },
   f4: () => newRouting,
   __lcToast: () => {},
 };
@@ -109,6 +111,9 @@ empty.routing.jumpers = [];
 out = run(empty);
 assert(out.routing.jumpers.length === newRouting.jumpers.length,
   '无旧跳线时完全采用新结果，实际 ' + out.routing.jumpers.length);
+
+// 9) v3.4：继续布线的入参必须经过零欧桥接注入（否则 0Ω 元件两侧会被重复布线）
+assert((sandbox.__bridgeCalls || 0) > 0, '继续布线把走锡入参交给零欧桥接处理');
 
 console.log(res.join('\n'));
 console.log(res.every(r => r.startsWith('PASS')) ? 'ALL PASS' : 'HAS FAILURES');

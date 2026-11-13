@@ -187,8 +187,15 @@ function __lcPinTipShow(hit, ev, hold) {
   el.style.top = y + "px";
   if (hold) window.__lcTipHold = Date.now() + 3500;
 }
+/* v3.4：只有「选择」模式才显示引脚网络提示框。
+   走锡 / 跳线 / 删线时光标本来就在逐孔移动，提示框会盖住落点，属于纯干扰。 */
+function __lcRouteIdle() {
+  var m = window.__lcRouteMode;
+  return !m || m === "select";
+}
 document.addEventListener("pointermove", function (ev) {
   if (window.__lcPicking) return;
+  if (!__lcRouteIdle()) { __lcPinTipHide(); return; }
   var cv = window.__lcCanvas;
   if (!cv || ev.target !== cv) { if (!window.__lcTipHold || Date.now() > window.__lcTipHold) __lcPinTipHide(); return; }
   if (window.__lcTipHold && Date.now() < window.__lcTipHold) return;
@@ -201,6 +208,7 @@ document.addEventListener("pointermove", function (ev) {
 }, !0);
 document.addEventListener("pointerdown", function (ev) {
   if (window.__lcPicking) return;
+  if (!__lcRouteIdle()) return;
   var cv = window.__lcCanvas;
   if (!cv || ev.target !== cv) return;
   var hit = __lcPinFromEvent(ev);

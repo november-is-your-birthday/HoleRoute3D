@@ -84,7 +84,8 @@ const wires = [
     '引脚命中分支：Shift 拖已选中成员不清空选集'],
   ['(ht&&(window.__lcSelIds||[]).indexOf(vt)>=0?"keep":!1)', '元件体命中分支：Shift 拖已选中成员保持选集'],
   ['if((K.ctrlKey||K.metaKey)&&T.current){', 'Ctrl 点击时抑制 OrbitControls 的平移/旋转'],
-  ['(K.ctrlKey||K.metaKey)||r(void 0)', 'Ctrl 点空白不清空选集'],
+  // v3.4 起「空点击清空」只在选择模式生效，Ctrl 保护也局限在选择模式内
+  ['x==="select"&&(K.ctrlKey||K.metaKey||r(void 0),l(void 0))', 'Ctrl 点空白不清空选集（且仅选择模式清空）'],
 ];
 wires.forEach(([needle, label]) => assert(bundle.indexOf(needle) >= 0, label));
 

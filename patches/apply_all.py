@@ -14,9 +14,15 @@ PRISTINE_WORKER = os.path.join(HERE, 'pristine/autoPlacement.worker-CtyuXT3o.js.
 P31 = os.path.join(HERE, 'patch_v31_main.js')
 P32 = os.path.join(HERE, 'patch_multisim.js')
 P33 = os.path.join(HERE, 'patch_v33_main.js')
+P34 = os.path.join(HERE, 'patch_v34_main.js')
 CHECK_ONLY = '--check' in sys.argv
+# 排障用：LC_SKIP="U4,U9" 可临时跳过指定补丁（不改变最终产物以外的任何行为）
+SKIP = set(x for x in os.environ.get('LC_SKIP', '').split(',') if x)
 
 def rep(text, old, new, label):
+    if any(label.split(' ')[0] == s for s in SKIP):
+        print('  skip', label)
+        return text
     n = text.count(old)
     if n != 1:
         raise SystemExit('FAIL %s: found %d occurrences (expected 1)' % (label, n))
@@ -52,6 +58,7 @@ wk = io.open(PRISTINE_WORKER, encoding='utf-8').read()
 p31 = io.open(P31, encoding='utf-8').read().strip()
 p32 = io.open(P32, encoding='utf-8').read().strip()
 p33 = io.open(P33, encoding='utf-8').read().strip()
+p34 = io.open(P34, encoding='utf-8').read().strip()
 
 print('== v3.1 structural patches ==')
 src = rep(src, 'v0=Wf("dip","dip_switch","seven_segment_display","alphanumeric_display")',
@@ -638,6 +645,81 @@ src = rep(src, 'onChange:T=>v({value:T.target.value})})]}),',
 src = rep(src, 'window.__lcProject=i,window.__lcCommit=H;return P.jsxs("div",{className:"app-shell"',
           'window.__lcProject=i,window.__lcCommit=H,window.__lcUnmountAll=__lcUnmountAll;return P.jsxs("div",{className:"app-shell"',
           'M11 expose unmount-all to toolbar')
+
+# =================================================================
+# v3.4.0
+# =================================================================
+print('== v3.4 shared helpers ==')
+src = rep(src, 'var __lcThumbCache={}', p34 + '\nvar __lcThumbCache={}', 'U0 code inject v3.4')
+
+# --- 1) 走锡 / 跳线 / 删线时不要弹引脚网络框 ---------------------------
+# 提示框的 pointermove 监听只看 __lcPicking，不看当前编辑模式；
+# 而这三个模式里光标本来就贴着孔位移动，浮窗正好盖住落点。
+# 把当前模式暴露成全局，提示框据此静默（patch_v33_main.js 里已加判断）。
+src = rep(src, 'qt.useEffect(()=>{__lcPaint(__lcHover.current)},[x,__lcDS,i])',
+          'qt.useEffect(()=>{window.__lcRouteMode=x,__lcPaint(__lcHover.current)},[x,__lcDS,i])',
+          'U1 expose route edit mode')
+
+# --- 2) 走锡 / 跳线 / 删线时点中元件不选中（避免右侧属性面板跳出）--------
+# 原实现里只有「引脚命中」按模式 gate 过，「元件体命中」是无条件执行的，
+# 于是在走锡时点到元件就会 r(vt) 选中它、右侧栏立刻弹出。
+src = rep(src, 'const vt=Ht(K);if(vt){',
+          'const vt=(x==="select"&&!D)?Ht(K):void 0;if(vt){',
+          'U2 component hit only in select mode')
+src = rep(src, '}else k.current=void 0,ot.current=void 0,(K.ctrlKey||K.metaKey)||r(void 0),l(void 0)},onPointerMove:',
+          '}else{k.current=void 0,ot.current=void 0,'
+          'x==="select"&&(K.ctrlKey||K.metaKey||r(void 0),l(void 0))}},onPointerMove:',
+          'U3 empty click clears selection only in select mode')
+
+# --- 3) 板子四个方向的行 / 列增删按钮 -----------------------------------
+GROW_BTN = (
+    'P.jsxs("div",{className:"lc-board-grow",onPointerDown:K=>K.stopPropagation(),'
+    'style:{position:"absolute",%s,display:"flex",gap:6,zIndex:7},children:['
+    'P.jsx("button",{className:"view-button",type:"button",title:"%s",style:{padding:"0 8px",height:"26px"},'
+    'onClick:()=>window.__lcBoardGrow&&window.__lcBoardGrow("%s",1),children:"%s"}),'
+    'P.jsx("button",{className:"view-button",type:"button",title:"%s",style:{padding:"0 8px",height:"26px"},'
+    'onClick:()=>window.__lcBoardGrow&&window.__lcBoardGrow("%s",-1),children:"%s"})]})'
+)
+GROW_UI = ','.join([
+    GROW_BTN % ('top:"12px",left:"50%",transform:"translateX(-50%)"',
+                '在上方加一行', 'top', '＋行', '删除最上一行（该行必须为空）', 'top', '－行'),
+    GROW_BTN % ('bottom:"12px",left:"50%",transform:"translateX(-50%)"',
+                '在下方加一行', 'bottom', '＋行', '删除最下一行（该行必须为空）', 'bottom', '－行'),
+    GROW_BTN % ('left:"12px",top:"50%",transform:"translateY(-50%)",flexDirection:"column"',
+                '在左侧加一列', 'left', '＋列', '删除最左一列（该列必须为空）', 'left', '－列'),
+    GROW_BTN % ('right:"12px",top:"50%",transform:"translateY(-50%)",flexDirection:"column"',
+                '在右侧加一列', 'right', '＋列', '删除最右一列（该列必须为空）', 'right', '－列'),
+])
+src = rep(src,
+          'children:"斜视"})]})]});function et(K){return It(K.clientX,K.clientY)}',
+          'children:"斜视"})]})' + ',' + GROW_UI + ']});function et(K){return It(K.clientX,K.clientY)}',
+          'U4 board grow buttons')
+
+# --- 4) 零欧电阻按导线处理 ---------------------------------------------
+# 布线 / DRC / 继续布线的入参里追加虚拟桥接（__lcBridge，locked、不渲染、不落盘），
+# 飞线的并查集也把同一网络的两个脚并起来。详见 patch_v34_main.js 注释。
+src = rep(src, 'yt=Y4(Q.board,rt,Q.components,q,zt,void 0,Bt)',
+          'yt=Y4(Q.board,rt,Q.components,__lcBridgeTraces(Q,q),zt,void 0,Bt)',
+          'U5 autoroute passes bridges')
+src = rep(src, 'const rt=Io(Q.importState,Q.components),at=J0(Q.board,Q.routing,rt,Q.components)',
+          'const rt=Io(Q.importState,Q.components),'
+          'at=J0(Q.board,__lcRoutingBridges(Q),rt,Q.components)',
+          'U7 drc sees bridges')
+src = rep(src, 'var pl=__lcContinuePlan(Q.board,eps,Q.components,Q.routing.traces||[],oldJ,Er(Q));',
+          'var pl=__lcContinuePlan(Q.board,eps,Q.components,'
+          '__lcBridgeTraces(Q,Q.routing.traces||[]),oldJ,Er(Q));',
+          'U8 continue route sees bridges')
+src = rep(src, 'for(var ji=0;ji<jumpers.length;ji+=1){var jm=jumpers[ji];if(jm&&jm.from&&jm.to)uni(key(jm.from),key(jm.to))}',
+          'for(var ji=0;ji<jumpers.length;ji+=1){var jm=jumpers[ji];if(jm&&jm.from&&jm.to)uni(key(jm.from),key(jm.to))}'
+          'var __lb=[];try{__lb=__lcBridgeLinks(pj)||[]}catch(e){__lb=[]}'
+          'for(var __li=0;__li<__lb.length;__li+=1)uni(key(__lb[__li].from),key(__lb[__li].to));',
+          'U9 ratsnest unions 0-ohm bridges')
+# 属性面板给出明确提示，否则「0Ω 当导线」是个不可见的行为变化
+src = rep(src, 'P.jsx("span",{children:O.mounted?"已在板上":"已拔起"})',
+          'P.jsx("span",{children:O.mounted?"已在板上":"已拔起"}),'
+          '__lcZeroOhm(O)&&P.jsx("span",{title:"0Ω 电阻：1、2 脚视为同一节点（同网络时），'
+          '飞线不再连接它们，自动布线也不会为它们铺铜",children:"0Ω 视为导线"})',
+          'U10 inspector 0-ohm hint')
 
 if CHECK_ONLY:
     print('check only, not written')

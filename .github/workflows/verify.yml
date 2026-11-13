@@ -15,10 +15,8 @@ jobs:
         with:
           node-version: '22'
 
-      - name: 语法检查（两个 bundle）
-        run: |
-          node --check src/dist/assets/index-C0NrTOjn.js
-          node --check src/dist/assets/autoPlacement.worker-CtyuXT3o.js
+      - name: 语法检查（两个 bundle，按 ES module 语义）
+        run: node harness/syntax-check.js
 
       - name: 补丁静态检查（同名不同义的标识符 / 参数不足）
         run: node harness/lint-lc.js --strict
