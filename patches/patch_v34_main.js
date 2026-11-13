@@ -215,6 +215,145 @@ function __lcDrcUnion(comps, byPin, uf, cells, keyFn) {
   });
 }
 
+/* DRC 里 MANUAL 走锡的网络归属必须按「连通组」算，不能按单条线段算。
+ *
+ * 手动画的走锡是一段段存的（一次拖动 = 一条 trace）。原实现 z2() 对每条 trace
+ * 单独看它经过的孔上有哪些焊盘网络：
+ *   恰好 1 个 → 这条线就是那个网络（继承）
+ *   0 个或 ≥2 个 → 保持 MANUAL
+ * 于是同一条电气连线上会出现两种名字：碰到焊盘的段叫 $1N32，没碰到焊盘的段叫
+ * MANUAL。两者共用同一个孔时，DRC 看到该孔的导电组里有 {MANUAL, $1N32}，
+ * 就报「不同网络共用同一导电组」—— 明明是一根线，被当成两根线短路。
+ *
+ * 这里改成：先按孔把所有走锡/跳线归并成连通组，再逐段传播定名——
+ * 碰到焊盘的段先定网，没碰到焊盘的中间段继承与它共孔的已定网络，循环到稳定；
+ * 最后仍定不下来的，若整组只有一个网络就归入它（悬空铜箔跟组走），
+ * 组内有多个网络才保留 MANUAL 交给 DRC（那才是真短路）。
+ * 结果按对象引用缓存，主循环里用 __lcManualNetOf(线段) 取。
+ */
+var __lcManualNetMap = null;
+
+function __lcPrepManualNets(traces, jumpers, pinNets, keyFn, UfClass) {
+  var map = new Map();
+  var tr = traces || [], jm = jumpers || [];
+  if (!tr.length && !jm.length) { __lcManualNetMap = map; return map; }
+  var uf = new UfClass();
+  var items = [];
+  var keysOf = function (o) {
+    if (!o) return [];
+    var pts = o.points;
+    if (pts && pts.length) {
+      var ks = [];
+      for (var i = 0; i < pts.length; i += 1) ks.push(keyFn(pts[i][0], pts[i][1]));
+      return ks;
+    }
+    if (o.from && o.to) return [keyFn(o.from[0], o.from[1]), keyFn(o.to[0], o.to[1])];
+    return [];
+  };
+  var addItem = function (o) {
+    var ks = keysOf(o);
+    if (!ks.length) return;
+    for (var i = 0; i < ks.length; i += 1) {
+      uf.add(ks[i]);
+      if (i) uf.union(ks[i - 1], ks[i]);
+    }
+    items.push({ obj: o, keys: ks });
+  };
+  tr.forEach(addItem);
+  jm.forEach(addItem);
+
+  var groupNets = new Map();
+  var pushNet = function (root, net) {
+    if (!net) return;
+    var s = groupNets.get(root);
+    if (!s) { s = new Set(); groupNets.set(root, s); }
+    s.add(net);
+  };
+  // 1) 自带网络名的走锡/跳线（自动布线的线本身就有 net）
+  items.forEach(function (it) {
+    var net = it.obj && it.obj.net;
+    if (!net || net === "MANUAL") return;
+    for (var i = 0; i < it.keys.length; i += 1) pushNet(uf.find(it.keys[i]), net);
+  });
+  // 2) 组内焊盘上的期望网络
+  items.forEach(function (it) {
+    for (var i = 0; i < it.keys.length; i += 1) {
+      var hs = pinNets.get(it.keys[i]);
+      if (!hs) continue;
+      var root = uf.find(it.keys[i]);
+      hs.forEach(function (n) { pushNet(root, n); });
+    }
+  });
+
+  // 逐条定名：先给「自身就碰到焊盘」的段定网络，再让没碰到焊盘的中间段
+  // 继承「与它共孔的已定网络」，循环到不再变化。
+  // 这样一串「A 段-$1N32 / B 段悬空 / C 段-$1N32」会全部归到 $1N32，不再互相冲突；
+  // 只有真正同时接上两个网络的段（真短路）才会留下 MANUAL 被报出来。
+  var byHoleNet = new Map();
+  var addNetToHoles = function (it, net) {
+    for (var i = 0; i < it.keys.length; i += 1) {
+      var s = byHoleNet.get(it.keys[i]);
+      if (!s) { s = new Set(); byHoleNet.set(it.keys[i], s); }
+      s.add(net);
+    }
+  };
+  var netsOnHoles = function (it) {
+    var s = new Set();
+    for (var i = 0; i < it.keys.length; i += 1) {
+      var have = byHoleNet.get(it.keys[i]);
+      if (have) have.forEach(function (n) { s.add(n); });
+    }
+    return s;
+  };
+  var pending = [];
+  items.forEach(function (it) {
+    var o = it.obj;
+    var net = o && o.net;
+    if (net && net !== "MANUAL") { map.set(o, net); addNetToHoles(it, net); return; }
+    var self = new Set();
+    for (var i = 0; i < it.keys.length; i += 1) {
+      var hs = pinNets.get(it.keys[i]);
+      if (hs) hs.forEach(function (n) { self.add(n); });
+    }
+    if (self.size === 1) {
+      var only = self.values().next().value;
+      map.set(o, only);
+      addNetToHoles(it, only);
+    } else {
+      pending.push(it);
+    }
+  });
+  for (var round = 0; round < 8 && pending.length; round += 1) {
+    var next = [];
+    pending.forEach(function (it) {
+      var found = netsOnHoles(it);
+      if (found.size === 1) {
+        var n = found.values().next().value;
+        map.set(it.obj, n);
+        addNetToHoles(it, n);
+      } else {
+        next.push(it);
+      }
+    });
+    if (next.length === pending.length) break;
+    pending = next;
+  }
+  // 仍未定的：若所在连通组只含一个网络，归入它（纯悬空铜箔跟组走）；
+  // 组里有多个网络说明这处确实短路，保留 MANUAL 让 DRC 报出来。
+  pending.forEach(function (it) {
+    var gs = groupNets.get(uf.find(it.keys[0]));
+    map.set(it.obj, gs && gs.size === 1 ? gs.values().next().value : "MANUAL");
+  });
+  __lcManualNetMap = map;
+  return map;
+}
+
+function __lcManualNetOf(seg) {
+  if (!seg) return "MANUAL";
+  if (__lcManualNetMap && __lcManualNetMap.has(seg)) return __lcManualNetMap.get(seg);
+  return seg.net || "MANUAL";
+}
+
 window.__lcBoardGrow = __lcBoardGrow;
 window.__lcZeroOhm = __lcZeroOhm;
 window.__lcOhm = __lcOhm;

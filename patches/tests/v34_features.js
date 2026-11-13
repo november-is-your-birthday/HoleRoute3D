@@ -264,5 +264,82 @@ assert(strip({ traces: [{ id: 'a', points: [] }], jumpers: [] }).traces.length =
 const same = { traces: [], jumpers: [] };
 assert(strip(same) === same, '没有需要剔除的项时返回原对象（避免多余提交）');
 
+/* ---------- 7) v3.4.3：MANUAL 走锡的网络归属按连通段传播，不按单条线 ---------- */
+assert(bundle.indexOf('__lcPrepManualNets(t.traces,t.jumpers,h,oe,Oy)') >= 0,
+  'DRC 走锡循环前先做整组网络解析');
+assert(bundle.indexOf('const O=Dr(M.points),C=__lcManualNetOf(M);') >= 0,
+  '走锡网络名来自解析结果，而不是逐条 z2');
+assert(bundle.indexOf(',R=__lcManualNetOf(M);') >= 0, '跳线与走锡共用同一套解析');
+
+const mBox = {
+  Map, Set, JSON, String, Number, Array, Object, console,
+};
+vm.createContext(mBox);
+vm.runInContext(
+  'class Uf{constructor(){this.p=new Map()}add(k){if(!this.p.has(k))this.p.set(k,k)}' +
+  'find(k){if(!this.p.has(k))this.p.set(k,k);var r=k;while(this.p.get(r)!==r)r=this.p.get(r);' +
+  'while(this.p.get(k)!==r){var n=this.p.get(k);this.p.set(k,r);k=n}return r}' +
+  'union(a,b){var ra=this.find(a),rb=this.find(b);if(ra!==rb)this.p.set(ra,rb)}}\n' +
+  'var __lcManualNetMap=null;\n' +
+  grabFn(bundle, 'function __lcPrepManualNets(') +
+  grabFn(bundle, 'function __lcManualNetOf(') +
+  'function __prep(tr,jm,pins){var m=new Map();(pins||[]).forEach(function(x){m.set(x[0],new Set(x[1]))});' +
+  '__lcPrepManualNets(tr,jm,m,function(x,y){return x+","+y},Uf)}' +
+  'function __net(o){return __lcManualNetOf(o)}',
+  mBox
+);
+
+// 7.1 一根线被拆成「碰焊盘段 + 悬空段」，两段必须同名（否则 DRC 会当成两根线短路）
+const segA = { id: 'A', net: 'MANUAL', points: [[0, 0], [0, 1]] };
+const segB = { id: 'B', net: 'MANUAL', points: [[0, 1], [0, 2]] };
+vm.runInContext('__prep(__tr, [], __pins)', Object.assign(mBox, {
+  __tr: [segA, segB],
+  __pins: [['0,0', ['$1N32']]],
+}));
+const nA = vm.runInContext('__net(__a)', Object.assign(mBox, { __a: segA }));
+const nB = vm.runInContext('__net(__b)', Object.assign(mBox, { __b: segB }));
+assert(nA === '$1N32' && nB === '$1N32', '悬空段继承同组已定网络（' + nA + '/' + nB + '）');
+
+// 7.2 三段链 A($1N11) - B(悬空) - C(GND)：B 归到先定下来的一侧，短路仍留在 0,2 上
+const c1 = { id: 'C1', net: 'MANUAL', points: [[0, 0], [0, 1]] };
+const c2 = { id: 'C2', net: 'MANUAL', points: [[0, 1], [0, 2]] };
+const c3 = { id: 'C3', net: 'MANUAL', points: [[0, 2], [0, 3]] };
+vm.runInContext('__prep(__tr, [], __pins)', Object.assign(mBox, {
+  __tr: [c1, c2, c3],
+  __pins: [['0,0', ['$1N11']], ['0,3', ['GND']]],
+}));
+const r1 = vm.runInContext('__net(__a)', Object.assign(mBox, { __a: c1 }));
+const r2 = vm.runInContext('__net(__b)', Object.assign(mBox, { __b: c2 }));
+const r3 = vm.runInContext('__net(__c)', Object.assign(mBox, { __c: c3 }));
+assert(r1 === '$1N11', '碰到焊盘的一端保持自己的网络');
+assert(r3 === 'GND', '另一端保持自己的网络');
+assert(r2 === 'MANUAL', '两端各连一个网络的中间段保留 MANUAL —— 它就是短路点，必须报出来');
+assert(r1 !== r3, '两端的网络名不同（真短路仍然存在，交给 DRC 报）');
+
+// 7.3 整组没有任何焊盘：保持 MANUAL（纯悬空铜箔）
+const d1 = { id: 'D1', net: 'MANUAL', points: [[5, 5], [5, 6]] };
+vm.runInContext('__prep(__tr, [], [])', Object.assign(mBox, { __tr: [d1] }));
+assert(vm.runInContext('__net(__a)', Object.assign(mBox, { __a: d1 })) === 'MANUAL',
+  '没有焊盘的悬空铜箔仍叫 MANUAL');
+
+// 7.4 自动布线的线自带网络名，不能被改写
+const e1 = { id: 'E1', net: '$1N27', points: [[1, 1], [1, 2]] };
+vm.runInContext('__prep(__tr, [], __pins)', Object.assign(mBox, {
+  __tr: [e1],
+  __pins: [['1,1', ['GND']]],
+}));
+assert(vm.runInContext('__net(__a)', Object.assign(mBox, { __a: e1 })) === '$1N27',
+  '自带网络的走锡保持原名');
+
+// 7.5 跳线参与同一套解析：MANUAL 跳线连到有焊盘的一侧后跟随该网络
+const f1 = { id: 'F1', net: 'MANUAL', points: [[3, 0], [3, 1]] };
+const f2 = { net: 'MANUAL', from: [3, 1], to: [3, 2] };
+vm.runInContext('__prep(__tr, __jm, __pins)', Object.assign(mBox, {
+  __tr: [f1], __jm: [f2],
+  __pins: [['3,0', ['$1N33']]],
+}));
+assert(vm.runInContext('__net(__b)', Object.assign(mBox, { __b: f2 })) === '$1N33',
+  'MANUAL 跳线与走锡同网络（' + vm.runInContext('__net(__b)', Object.assign(mBox, { __b: f2 })) + '）');
+
 console.log(res.join('\n'));
 console.log(res.every(r => r.startsWith('PASS')) ? 'ALL PASS' : 'HAS FAILURES');

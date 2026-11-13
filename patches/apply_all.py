@@ -765,6 +765,17 @@ src = rep(src, 'var Zt=f4(pl,Er(Q));',
 src = rep(src, 'function J0(i,t,e,s){const r=Zi(i),',
           'function J0(i,t,e,s){t=__lcStripBridges(t);const r=Zi(i),',
           'V7 drc ignores persisted bridge traces')
+# MANUAL 走锡的网络归属：按连通组解析，不再按单条线段解析。
+# 逐条解析会让同一条手画线的「碰到焊盘段」继承到真实网络、「没碰到焊盘段」留在 MANUAL，
+# 两者共享同一孔时被判定为「不同网络共用同一导电组」（典型的一根线报成两根线短路）。
+src = rep(src, '(__lcDrcUnion(s,c,_,S,oe)),t.traces.forEach(M=>{const O=Dr(M.points),C=z2(M.net,O,h,d);',
+          '(__lcDrcUnion(s,c,_,S,oe)),'
+          '__lcPrepManualNets(t.traces,t.jumpers,h,oe,Oy),'
+          't.traces.forEach(M=>{const O=Dr(M.points),C=__lcManualNetOf(M);',
+          'V8 manual nets resolved per connected group')
+src = rep(src, ',R=z2(M.net,[M.from,M.to],h,d);',
+          ',R=__lcManualNetOf(M);',
+          'V9 jumper uses group-resolved net')
 
 if CHECK_ONLY:
     print('check only, not written')
