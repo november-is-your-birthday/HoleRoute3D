@@ -496,6 +496,52 @@ src = rep(src, 'children:"空网络：点「拾取」后直接点板上引脚加
           'children:"空网络：点「点选引脚」后直接点板上引脚加入"', 'N5 empty net hint')
 
 # ---------------------------------------------------------------
+# v3.3.2: 右键菜单保持多选
+# 实测反馈：Ctrl 选中多个元件后再右键点「拔起 / 放置」，结果只作用在一个元件上。
+# 根因：视图组件的 onContextMenu 里第一步就是 r(st)，把选择集重写成 [被点中的那一个]；
+# 而组合操作（_t / xt / Gt / Xt 已被 M3/M4/M2/M5 改成读 __lcSelIdsOf(f)）此时集合只剩 1 个，
+# 于是「组合操作」退化成「单件操作」。这是纯粹的右键入口问题，与被调用的变换逻辑无关。
+# 修法：
+#   ① 选择入口新增 "keepPrimary" 模式：保留已有集合，只把主选中挪到被点中的元件。
+#      为什么必须挪主选中：属性面板、工具栏 disabled、菜单 disabled 全都读单值 f，主选中不动会指错对象。
+#   ② 菜单的可用状态改为按整个集合求值：全部已放置 → 只能拔起；全部已拔起 → 只能放置；
+#      混合状态 → 两个按钮都可用（各自跳过无需变动的成员）。
+# ---------------------------------------------------------------
+src = rep(src, 'else if(add==="keep")next=prev.indexOf(Q)>=0?prev.slice():prev.concat([Q]);',
+          'else if(add==="keep")next=prev.indexOf(Q)>=0?prev.slice():prev.concat([Q]);'
+          'else if(add==="keepPrimary")next=prev.indexOf(Q)>=0?'
+          'prev.filter(function(x){return x!==Q}).concat([Q]):prev.concat([Q]);',
+          'M16 keepPrimary selection mode')
+src = rep(src, 'const st=jt(K.clientX,K.clientY);st?(r(st),l(void 0),G({x:K.clientX,y:K.clientY}))',
+          'const st=jt(K.clientX,K.clientY);st?('
+          'r(st,(window.__lcSelIds||[]).indexOf(st)>=0?"keepPrimary":!1),'
+          'l(void 0),G({x:K.clientX,y:K.clientY}))',
+          'M17 context menu keeps selection')
+src = rep_fn(src, 'function le(){return!!t.find(K=>K.id===e)?.mounted}',
+             'function le(mode){'
+             'var ids=window.__lcSelIds||[];'
+             'var arr=ids.length?t.filter(function(c){return ids.indexOf(c.id)>=0}):[];'
+             'if(!arr.length){var one=t.find(function(c){return c.id===e});arr=one?[one]:[]}'
+             'if(!arr.length)return!1;'
+             'if(mode==="mount")return arr.every(function(c){return !!c.mounted});'
+             'if(mode==="unmount")return !arr.some(function(c){return !!c.mounted});'
+             'if(mode==="rotate")return arr.every(function(c){return !!c.mounted});'
+             'return!!t.find(function(c){return c.id===e})?.mounted}',
+             'M18 context menu disabled state by group')
+src = rep(src, 'disabled:le(),onClick:()=>{g(),G(void 0)},children:"放置"',
+          'disabled:le("mount"),onClick:()=>{g(),G(void 0)},children:"放置"',
+          'M19 place enabled by group')
+src = rep(src, 'disabled:!le(),onClick:()=>{_(),G(void 0)},children:"拔起"',
+          'disabled:le("unmount"),onClick:()=>{_(),G(void 0)},children:"拔起"',
+          'M20 unmount enabled by group')
+src = rep(src, 'disabled:le(),onClick:()=>{h(),G(void 0)},children:"旋转 +90°"',
+          'disabled:le("rotate"),onClick:()=>{h(),G(void 0)},children:"旋转 +90°"',
+          'M21 rotate cw enabled by group')
+src = rep(src, 'disabled:le(),onClick:()=>{h(-1),G(void 0)},children:"旋转 -90°"',
+          'disabled:le("rotate"),onClick:()=>{h(-1),G(void 0)},children:"旋转 -90°"',
+          'M22 rotate ccw enabled by group')
+
+# ---------------------------------------------------------------
 # v3.3: 继续布线（Continue route）
 # 实测（3.2.5）：继续布线后 5 条手工跳线（net === "MANUAL"）全部消失，被 10 条新建跳线取代。
 # 根因：Y4() 的第 7 参 jumpers 只在面包板分支（q4）里被使用，洞洞板分支完全不读，

@@ -138,5 +138,59 @@ const gt = grabFn(bundle, 'function Gt(cw)');
 assert(gt.indexOf('position') < 0, '组合旋转不改 position（各自绕 1 脚，不会落在半孔）');
 assert(gt.indexOf('rotation:c.rotation+d') >= 0, '组合旋转对每个选中元件加同一角度');
 
+// 5) v3.3.2：右键菜单必须保留选集
+// 反例（用户反馈）：选中多个元件后右键 → onContextMenu 里 r(st) 把集合压成 1 个，
+// 于是「拔起 / 放置 / 旋转 / 删除」全都只作用在被点中的那一个。
+assert(bundle.indexOf('else if(add==="keepPrimary")next=prev.indexOf(Q)>=0?'
+  + 'prev.filter(function(x){return x!==Q}).concat([Q]):prev.concat([Q]);') >= 0,
+  '选择入口支持 keepPrimary（保留集合、只挪主选中）');
+assert(bundle.indexOf('r(st,(window.__lcSelIds||[]).indexOf(st)>=0?"keepPrimary":!1)') >= 0,
+  '右键入口对已在选集内的元件使用 keepPrimary');
+assert(bundle.indexOf('st?(r(st),l(void 0),G({x:K.clientX,y:K.clientY}))') < 0,
+  '右键入口不再无条件重置选择集');
+assert(bundle.indexOf('disabled:le("unmount"),onClick:()=>{_(),G(void 0)},children:"拔起"') >= 0,
+  '菜单「拔起」的可用状态按整个集合求值');
+
+// keepPrimary 的行为：集合保留顺序、主选中挪到被点中的那个
+const ttBox = {
+  window: { __lcSelIds: ['a', 'b', 'c'] }, Math, JSON, String, Number, Array, Object, console,
+  __lcSelSet(v) { ttBox.__set = v; }, h(v) { ttBox.__primary = v; },
+  R(fn) { return fn(undefined); },
+};
+vm.createContext(ttBox);
+vm.runInContext(grabFn(bundle, 'function Tt(Q,add){'), ttBox);
+vm.runInContext('Tt("b","keepPrimary")', ttBox);
+assert(eq(ttBox.__set, ['a', 'c', 'b']), 'keepPrimary：集合保留，被点中的元件成为最后一项');
+assert(ttBox.__primary === 'b', 'keepPrimary：主选中指向被右键的元件');
+ttBox.window.__lcSelIds = ['a', 'b', 'c'];
+vm.runInContext('Tt("z","keepPrimary")', ttBox);
+assert(eq(ttBox.__set, ['a', 'b', 'c', 'z']), 'keepPrimary：右键未选中元件时追加进集合');
+ttBox.window.__lcSelIds = ['a', 'b', 'c'];
+vm.runInContext('Tt("b")', ttBox);
+assert(eq(ttBox.__set, ['b']), '普通右键（无修饰）仍把集合塌成单件');
+ttBox.window.__lcSelIds = ['a', 'b', 'c'];
+vm.runInContext('Tt("b","keep")', ttBox);
+assert(eq(ttBox.__set, ['a', 'b', 'c']), 'keep 模式顺序不变（Shift 拖动用）');
+
+// 菜单按钮的可用状态：混合状态时「放置」「拔起」都应可点
+function leOf(selIds, comps, primary, mode) {
+  const box = { window: { __lcSelIds: selIds }, t: comps, e: primary, Array, Object, console };
+  vm.createContext(box);
+  vm.runInContext(grabFn(bundle, 'function le(mode){'), box);
+  return vm.runInContext('le(' + JSON.stringify(mode) + ')', box);
+}
+const mixed = [{ id: 'a', mounted: true }, { id: 'b', mounted: false }];
+assert(leOf(['a', 'b'], mixed, 'a', 'mount') === false, '混合状态：「放置」可用');
+assert(leOf(['a', 'b'], mixed, 'a', 'unmount') === false, '混合状态：「拔起」可用');
+const allOn = [{ id: 'a', mounted: true }, { id: 'b', mounted: true }];
+assert(leOf(['a', 'b'], allOn, 'a', 'mount') === true, '全部已放置：「放置」禁用');
+assert(leOf(['a', 'b'], allOn, 'a', 'unmount') === false, '全部已放置：「拔起」可用');
+const allOff = [{ id: 'a', mounted: false }, { id: 'b', mounted: false }];
+assert(leOf(['a', 'b'], allOff, 'a', 'mount') === false, '全部已拔起：「放置」可用');
+assert(leOf(['a', 'b'], allOff, 'a', 'unmount') === true, '全部已拔起：「拔起」禁用');
+assert(leOf([], [{ id: 'a', mounted: true }], 'a', 'mount') === true, '单件回落到主选中（已放置）');
+assert(leOf([], [{ id: 'a', mounted: false }], 'a', 'unmount') === true, '单件回落到主选中（已拔起）');
+assert(leOf([], [], undefined, 'mount') === false, '无选中时不误禁菜单');
+
 console.log(res.join('\n'));
 console.log(res.every(r => r.startsWith('PASS')) ? 'ALL PASS' : 'HAS FAILURES');
