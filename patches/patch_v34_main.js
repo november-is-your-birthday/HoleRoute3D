@@ -354,7 +354,269 @@ function __lcManualNetOf(seg) {
   return seg.net || "MANUAL";
 }
 
+/* ==================================================================
+ * v3.4.4：DRC 错误可定位
+ * 原来的报错只有一句「网络间短路 @ 13,42：MANUAL、$1N11」——既不说这个孔上
+ * 是哪个元件哪只脚，也不能点过去，用户只能自己数行列去找。
+ * 这里做三件事：
+ *   1) 从 drc.pinStatuses 反查「孔 → 引脚」，每条错误标出涉及的位号.脚号(网络)；
+ *   2) 底层走锡重叠这类错误只有 segment（一条边的两个孔），补出完整的孔位；
+ *   3) 点条目 → 相机移到该孔 + 红球标记，列表不再截断，可复制全部。
+ * ================================================================== */
+function __lcPinIndex(statuses) {
+  var idx = {};
+  (statuses || []).forEach(function (p) {
+    if (!p || !p.grid || p.grid.length < 2) return;
+    var k = p.grid[0] + "," + p.grid[1];
+    var arr = idx[k] || (idx[k] = []);
+    for (var i = 0; i < arr.length; i += 1) {
+      if (arr[i].ref === p.ref && arr[i].pin === p.pin) return;
+    }
+    arr.push({ ref: p.ref, pin: p.pin, name: p.pinName, net: p.expectedNet, status: p.status });
+  });
+  return idx;
+}
+
+/* 一条错误涉及的所有孔：grid（单孔）、segment（两点）都要算上 */
+function __lcDrcHoles(e) {
+  if (!e) return [];
+  if (e.holes && e.holes.length) return e.holes;
+  var out = [];
+  var add = function (g) {
+    if (!g || typeof g[0] !== "number" || typeof g[1] !== "number") return;
+    var k = g[0] + "," + g[1];
+    for (var i = 0; i < out.length; i += 1) if (out[i][0] + "," + out[i][1] === k) return;
+    out.push([g[0], g[1]]);
+  };
+  add(e.grid);
+  if (e.segment && e.segment.length) {
+    add(e.segment[0]);
+    add(e.segment[e.segment.length - 1]);
+  }
+  return out;
+}
+
+function __lcDrcWhere(e) {
+  var hs = __lcDrcHoles(e);
+  if (!hs.length) return "";
+  return hs.map(function (g) { return g[0] + "," + g[1]; }).join(" ↔ ");
+}
+
+/* 位号.脚号(引脚名)（网络）——定位到「哪只脚」靠这一行。
+   引脚名是纯数字（嘉立创网表就是 "1"/"2"）时不重复显示，只留脚号。 */
+function __lcPinLabel(ref, pin, name, net) {
+  var nm = name && String(name) !== String(pin) && /[A-Za-z]/.test(String(name)) ? "(" + name + ")" : "";
+  return ref + "." + pin + nm + (net ? "（" + net + "）" : "");
+}
+function __lcDrcPinText(e, idx) {
+  var parts = [];
+  var push = function (s) { if (s && parts.indexOf(s) < 0) parts.push(s); };
+  if (e && e.ref) push(__lcPinLabel(e.ref, e.pin, e.pinName, e.expectedNet));
+  __lcDrcHoles(e).forEach(function (g) {
+    var list = (idx || {})[g[0] + "," + g[1]] || [];
+    list.forEach(function (p) { push(__lcPinLabel(p.ref, p.pin, p.name, p.net)); });
+  });
+  if (parts.length > 8) return parts.slice(0, 8).join("  ") + "  +" + (parts.length - 8);
+  return parts.join("  ");
+}
+
+function __lcDrcClearMark() {
+  var list = window.__lcDrcMarks || [];
+  var sc = window.__lcScene;
+  list.forEach(function (m) {
+    try {
+      if (sc && m.parent === sc) sc.remove(m);
+      if (m.geometry && m.geometry.dispose) m.geometry.dispose();
+      if (m.material && m.material.dispose) m.material.dispose();
+    } catch (e) {}
+  });
+  window.__lcDrcMarks = [];
+}
+
+function __lcDrcMark(holes) {
+  try {
+    var sc = window.__lcScene, ba = window.__lcBoardArgs;
+    if (!sc || !ba || !holes || !holes.length) return;
+    __lcDrcClearMark();
+    var w = ba.board.width, h = ba.board.height, out = [];
+    holes.slice(0, 24).forEach(function (g) {
+      var m = new Vt(new Ki(0.42, 16, 12),
+        new Pe({ color: 16726832, emissive: 16724736, roughness: 0.32, transparent: true, opacity: 0.95 }));
+      m.position.set(g[0] - w / 2 + 0.5, 0.62, g[1] - h / 2 + 0.5);
+      m.renderOrder = 12;
+      if (m.material) { m.material.depthTest = false; m.material.emissiveIntensity = 1.1; }
+      sc.add(m);
+      out.push(m);
+    });
+    window.__lcDrcMarks = out;
+  } catch (e) {}
+}
+
+/* 保持当前视角方向，把观察点平移到目标孔并适当拉近 */
+function __lcDrcFocus(holes) {
+  try {
+    var cam = window.__lcCamera, ctl = window.__lcControls, ba = window.__lcBoardArgs;
+    if (!cam || !ba || !holes || !holes.length) return;
+    var w = ba.board.width, h = ba.board.height, cx = 0, cz = 0;
+    holes.forEach(function (g) { cx += g[0] - w / 2 + 0.5; cz += g[1] - h / 2 + 0.5; });
+    cx /= holes.length;
+    cz /= holes.length;
+    var ty = 0.6;
+    if (ctl && ctl.target) {
+      var dx = cam.position.x - ctl.target.x;
+      var dy = cam.position.y - ctl.target.y;
+      var dz = cam.position.z - ctl.target.z;
+      var len = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1;
+      var nd = Math.min(Math.max(len, 7), 16);
+      ctl.target.set(cx, ty, cz);
+      cam.position.set(cx + dx / len * nd, ty + dy / len * nd, cz + dz / len * nd);
+      cam.lookAt(ctl.target);
+      if (ctl.update) ctl.update();
+    } else {
+      cam.position.set(cx + 8, 12, cz + 10);
+      cam.lookAt(cx, ty, cz);
+    }
+  } catch (e) {}
+}
+
+function __lcDrcGo(e) {
+  var holes = __lcDrcHoles(e);
+  if (!holes.length) { __lcToast("这条记录没有孔位，无法定位"); return; }
+  __lcDrcMark(holes);
+  __lcDrcFocus(holes);
+  var who = e && e.ref ? e.ref + "." + e.pin + " · " : "";
+  __lcToast("已定位 " + who + "孔 " + __lcDrcWhere(e));
+}
+
+function __lcDrcCopy(project) {
+  var d = (project && project.routing && project.routing.drc) || {};
+  var idx = __lcPinIndex(d.pinStatuses);
+  var lines = [];
+  var fmt = function (e, tag) {
+    var where = __lcDrcWhere(e);
+    var pins = __lcDrcPinText(e, idx);
+    return tag + " " + __lcDrcCode(e.code) + (where ? " @ " + where : "") +
+      (pins ? " | " + pins : "") + "\n    " + e.message;
+  };
+  (d.errors || []).forEach(function (e, i) { lines.push((i + 1) + ". " + fmt(e, "[错误]")); });
+  (d.warnings || []).forEach(function (e, i) { lines.push((i + 1) + ". " + fmt(e, "[警告]")); });
+  var text = lines.join("\n");
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text);
+    else {
+      var ta = document.createElement("textarea");
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      document.body.removeChild(ta);
+    }
+  } catch (e) {}
+  __lcToast("已复制 " + (d.errors || []).length + " 条错误、" + (d.warnings || []).length + " 条警告");
+}
+
+function __lcDrcItem(e, idx, key, no) {
+  var isErr = e.severity === "error";
+  var where = __lcDrcWhere(e);
+  var pins = __lcDrcPinText(e, idx);
+  return P.jsxs("button", {
+    type: "button",
+    className: "lc-drc-item" + (isErr ? " is-error" : " is-warn"),
+    title: where ? "点击定位到孔 " + where : "点击定位",
+    onClick: function () { __lcDrcGo(e); },
+    children: [
+      P.jsxs("span", { className: "lc-drc-head", children: [
+        P.jsx("span", { className: "lc-drc-no", children: no }),
+        P.jsx("span", { className: "lc-drc-code", children: __lcDrcCode(e.code) }),
+        where ? P.jsx("span", { className: "lc-drc-pos", children: where }) : null
+      ] }),
+      pins ? P.jsx("span", { className: "lc-drc-pins", children: pins }) : null,
+      P.jsx("span", { className: "lc-drc-msg", children: e.message })
+    ]
+  }, key);
+}
+
+function __lcDrcPanelV2(props) {
+  var i = (props && props.project) || {};
+  var d = i.routing && i.routing.drc;
+  if (!d) {
+    if (window.__lcDrcMarks && window.__lcDrcMarks.length) __lcDrcClearMark();
+    return null;
+  }
+  __lcStyleOnce("lc-drc-css",
+    ".lc-drc-list{display:flex;flex-direction:column;gap:6px;max-height:44vh;overflow:auto;padding-right:2px;margin-top:8px}" +
+    ".lc-drc-item{display:flex;flex-direction:column;gap:3px;width:100%;text-align:left;border:1px solid #e3e8ef;" +
+    "border-left:3px solid #d9534f;border-radius:6px;background:#fff;padding:6px 8px;cursor:pointer;transition:background .12s,border-color .12s}" +
+    ".lc-drc-item:hover{background:#f5f9ff;border-color:#b9cdf0}" +
+    ".lc-drc-item.is-warn{border-left-color:#e0a800}" +
+    ".lc-drc-head{display:flex;align-items:center;gap:6px;min-width:0}" +
+    ".lc-drc-no{flex:none;min-width:14px;color:#98a2b3;font-size:11px;font-variant-numeric:tabular-nums}" +
+    ".lc-drc-code{flex:none;color:#1f2937;font-size:12px;font-weight:600}" +
+    ".lc-drc-pos{flex:none;margin-left:auto;color:#1d6b3a;background:#eef7f0;border:1px solid #cfe6d6;" +
+    "border-radius:4px;padding:0 5px;font-size:11px;font-family:ui-monospace,Consolas,monospace}" +
+    ".lc-drc-pins{color:#334155;font-size:11.5px;line-height:1.5;word-break:break-all}" +
+    ".lc-drc-msg{color:#7b8794;font-size:11px;line-height:1.45;word-break:break-all}" +
+    ".lc-drc-chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}" +
+    ".lc-drc-chip{background:#f2f4f7;border:1px solid #e4e7ec;border-radius:10px;padding:0 7px;color:#475467;font-size:11px;line-height:17px}" +
+    ".lc-drc-chip.is-warn{background:#fdf7e6;border-color:#f0dca6;color:#8a6d1f}" +
+    ".lc-drc-actions{display:flex;gap:10px;margin-top:8px}" +
+    ".lc-drc-badge{margin-left:6px;color:#b42318;font-size:11px;font-weight:600}" +
+    ".lc-drc-tip{margin:6px 0 0;color:#8b95a1;font-size:11px}");
+  var errs = d.errors || [], warns = d.warnings || [];
+  var idx = __lcPinIndex(d.pinStatuses);
+  // 按错误码计数：错误在前、警告在后；只有警告时也要有标签，否则一行空白看着像坏了
+  var chips = [];
+  [errs, warns].forEach(function (list, li) {
+    var counts = {};
+    list.forEach(function (e) { counts[e.code] = (counts[e.code] || 0) + 1; });
+    Object.keys(counts)
+      .sort(function (a, b) { return counts[b] - counts[a]; })
+      .forEach(function (c) {
+        chips.push(P.jsxs("span", {
+          className: "lc-drc-chip" + (li === 1 ? " is-warn" : ""),
+          title: (li === 1 ? "警告：" : "错误：") + __lcDrcCode(c),
+          children: [__lcDrcCode(c), " ×", counts[c]]
+        }, (li === 1 ? "w-" : "e-") + c));
+      });
+  });
+  var items = [];
+  errs.forEach(function (e, n) { items.push(__lcDrcItem(e, idx, "e" + n, n + 1)); });
+  warns.forEach(function (e, n) { items.push(__lcDrcItem(e, idx, "w" + n, "警" + (n + 1))); });
+  var capped = items.length > 120 ? items.slice(0, 120) : items;
+  var hidden = items.length - capped.length;
+  return P.jsxs("section", {
+    className: "sidebar-section",
+    children: [
+      P.jsxs("h2", {
+        children: ["DRC 检查", errs.length ? P.jsxs("span", { className: "lc-drc-badge", children: [errs.length, " 错"] }) : null]
+      }),
+      P.jsxs("div", {
+        className: "import-summary",
+        children: [
+          P.jsx(kl, { label: "错误", value: errs.length }),
+          P.jsx(kl, { label: "警告", value: warns.length })
+        ]
+      }),
+      !errs.length && !warns.length ? P.jsx("p", { className: "drc-ok", children: "DRC 通过，未发现问题。" }) : null,
+      chips.length ? P.jsx("div", { className: "lc-drc-chips", children: chips }) : null,
+      capped.length ? P.jsx("p", { className: "lc-drc-tip", children: "点任一条可定位到对应孔位（相机拉到该处并打红球标记）" }) : null,
+      capped.length ? P.jsx("div", { className: "lc-drc-list", children: capped }) : null,
+      hidden > 0 ? P.jsxs("p", { className: "lc-drc-tip", children: ["另有 ", hidden, " 条未显示，用「复制全部」导出"] }) : null,
+      capped.length ? P.jsxs("div", {
+        className: "lc-drc-actions",
+        children: [
+          P.jsx("button", { type: "button", className: "text-button", onClick: function () { __lcDrcCopy(i); }, children: "复制全部" }),
+          P.jsx("button", { type: "button", className: "text-button", onClick: function () { __lcDrcClearMark(); __lcToast("已清除定位标记"); }, children: "清除标记" })
+        ]
+      }) : null
+    ]
+  });
+}
+
 window.__lcBoardGrow = __lcBoardGrow;
+window.__lcDrcGo = __lcDrcGo;
+window.__lcDrcClearMark = __lcDrcClearMark;
+window.__lcDrcPanelV2 = __lcDrcPanelV2;
 window.__lcZeroOhm = __lcZeroOhm;
 window.__lcOhm = __lcOhm;
 window.__lcBridgeLinks = __lcBridgeLinks;

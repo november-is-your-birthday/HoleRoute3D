@@ -341,5 +341,67 @@ vm.runInContext('__prep(__tr, __jm, __pins)', Object.assign(mBox, {
 assert(vm.runInContext('__net(__b)', Object.assign(mBox, { __b: f2 })) === '$1N33',
   'MANUAL 跳线与走锡同网络（' + vm.runInContext('__net(__b)', Object.assign(mBox, { __b: f2 })) + '）');
 
+/* ---------- 8) v3.4.4：DRC 报错能定位到具体位置 ---------- */
+assert(bundle.indexOf('function __lcDrcPanel(i){return __lcDrcPanelV2(i)}') >= 0,
+  'DRC 面板换成可定位版本');
+assert(bundle.indexOf('window.__lcControls=vt') >= 0, '暴露 OrbitControls 供定位使用');
+assert(bundle.indexOf('e.slice(0,12).map') < 0, '错误列表不再只显示前 12 条');
+assert(bundle.indexOf('window.__lcDrcGo = __lcDrcGo') >= 0, '错误条目可点击定位');
+assert(bundle.indexOf('lc-drc-item') >= 0 && bundle.indexOf('复制全部') >= 0, '面板有定位条目与复制按钮');
+
+const lBox = { console, JSON, String, Number, Math, Array, Object };
+vm.createContext(lBox);
+['__lcDrcHoles', '__lcDrcWhere', '__lcDrcPinText', '__lcPinIndex', '__lcPinLabel'].forEach(n =>
+  vm.runInContext(grabFn(bundle, 'function ' + n + '('), lBox));
+
+// 单孔错误：grid 就是位置
+let dHoles = vm.runInContext('__lcDrcHoles({grid:[13,42]})', lBox);
+assert(dHoles.length === 1 && dHoles[0][0] === 13 && dHoles[0][1] === 42, 'grid 单孔解析');
+assert(vm.runInContext('__lcDrcWhere({grid:[13,42]})', lBox) === '13,42', '位置文案 13,42');
+
+// 底层走锡重叠只有 segment：两端孔都要出来
+dHoles = vm.runInContext('__lcDrcHoles({segment:[[8,23],[8,24]]})', lBox);
+assert(dHoles.length === 2, 'segment 两端孔都解析出来（' + dHoles.length + '）');
+assert(vm.runInContext('__lcDrcWhere({segment:[[8,23],[8,24]]})', lBox) === '8,23 ↔ 8,24',
+  '边错误显示两个孔');
+
+// grid 与 segment 指向同一孔时去重
+dHoles = vm.runInContext('__lcDrcHoles({grid:[8,24],segment:[[8,23],[8,24]]})', lBox);
+assert(dHoles.length === 2, 'grid 与 segment 重复孔去重（' + dHoles.length + '）');
+
+// 没有任何位置信息的错误不能编造坐标
+assert(vm.runInContext('__lcDrcWhere({code:"DIP_PIN_GEOMETRY"})', lBox) === '',
+  '无位置错误不返回假坐标');
+
+// 孔上的引脚：让「网络间短路」能指到具体是哪只脚
+const dIdx = vm.runInContext('__lcPinIndex(__ps)', Object.assign(lBox, {
+  __ps: [
+    { ref: 'C7', pin: 2, grid: [13, 42], expectedNet: '$1N11', pinName: '2' },
+    { ref: 'C7', pin: 2, grid: [13, 42], expectedNet: '$1N11' },
+    { ref: 'U2', pin: 5, grid: [8, 23], expectedNet: '$1N32' },
+  ],
+}));
+assert(dIdx['13,42'].length === 1, '同一引脚重复进索引只保留一条');
+
+const dT1 = vm.runInContext('__lcDrcPinText(__e, __i)', Object.assign(lBox, {
+  __e: { grid: [13, 42], actualNets: ['MANUAL', '$1N11'] }, __i: dIdx,
+}));
+assert(dT1.indexOf('C7.2') >= 0 && dT1.indexOf('$1N11') >= 0, '引脚文案带位号与网络（' + dT1 + '）');
+
+const dT2 = vm.runInContext('__lcDrcPinText(__e, __i)', Object.assign(lBox, {
+  __e: { segment: [[8, 23], [8, 24]] }, __i: dIdx,
+}));
+assert(dT2.indexOf('U2.5') >= 0, '边错误也能指出端点上的脚（' + dT2 + '）');
+
+const dT3 = vm.runInContext('__lcDrcPinText(__e, __i)', Object.assign(lBox, {
+  __e: { ref: 'R24', pin: 1, expectedNet: 'GND', grid: [11, 32] }, __i: dIdx,
+}));
+assert(dT3.indexOf('R24.1') === 0, '引脚错误以 R24.1 开头（' + dT3 + '）');
+
+// 引脚名就是脚号时不要显示成 C7.2(2)
+assert(dT1.indexOf('C7.2(2)') < 0, '数字引脚名不重复显示（' + dT1 + '）');
+const dT4 = vm.runInContext('__lcPinLabel("Q1",2,"C","$1N5")', lBox);
+assert(dT4 === 'Q1.2(C)（$1N5）', '带字母的引脚名保留（' + dT4 + '）');
+
 console.log(res.join('\n'));
 console.log(res.every(r => r.startsWith('PASS')) ? 'ALL PASS' : 'HAS FAILURES');

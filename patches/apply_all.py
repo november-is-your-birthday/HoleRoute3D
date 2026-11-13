@@ -70,7 +70,8 @@ src = rep(src, 'var __lcThumbCache={}', p31 + '\nvar __lcThumbCache={}', 'M4 cod
 src = rep(src, 'window.__lcProject=i;return P.jsxs("div",{className:"app-shell"',
           'window.__lcProject=i,window.__lcCommit=H;return P.jsxs("div",{className:"app-shell"', 'M5 commit hook')
 src = rep(src, 'window.__lcScene=K,window.__lcBoardArgs={board:i,transparent:b,theme:y};',
-          'window.__lcScene=K,window.__lcBoardArgs={board:i,transparent:b,theme:y},window.__lcCamera=st,window.__lcCanvas=vt.domElement;', 'M6 camera hook')
+          'window.__lcScene=K,window.__lcBoardArgs={board:i,transparent:b,theme:y},window.__lcCamera=st,'
+          'window.__lcCanvas=vt.domElement,window.__lcControls=vt;', 'M6 camera hook')
 src = rep(src, 's&&P.jsxs("section",{className:"pin-header-configurator","aria-label":"排针"',
           'P.jsx(LcFpPanel,{onPick:i,close:()=>e(!1)}),s&&P.jsxs("section",{className:"pin-header-configurator","aria-label":"排针"', 'M7 fp panel in I3')
 src = rep(src, 'P.jsx(Z3,{project:i,onSelectNet:r})',
@@ -776,6 +777,26 @@ src = rep(src, '(__lcDrcUnion(s,c,_,S,oe)),t.traces.forEach(M=>{const O=Dr(M.poi
 src = rep(src, ',R=z2(M.net,[M.from,M.to],h,d);',
           ',R=__lcManualNetOf(M);',
           'V9 jumper uses group-resolved net')
+
+# =================================================================
+# v3.4.4：DRC 列表可定位
+# 原来的面板只有一行行纯文本，最多显示 12 条，没有元件位号、不能跳转 ——
+# 「网络间短路 @ 13,42：MANUAL、$1N11」这种报错用户没法在板上找到位置。
+# 新版面板（patch_v34_main.js 的 __lcDrcPanelV2）补三件事：
+#   1) 每条错误标出孔位 + 该孔上的 位号.脚号(网络)；
+#   2) 点击条目把相机拉到该孔并打红球标记；
+#   3) 不再截断到 12 条，可按「复制全部」导出完整清单。
+# 这里只把原组件改成一层薄壳，逻辑全在注入文件里，方便单测。
+# =================================================================
+# 原组件是单行 `function __lcDrcPanel({project:i}){...}` —— 不能用 rep_fn，
+# 它的花括号配平会被参数解构的 {} 骗到，只能按起止标记整体切掉。
+_a = src.count('function __lcDrcPanel({project:i}){')
+if _a != 1:
+    raise SystemExit('FAIL W1 drc panel: found %d anchors (expected 1)' % _a)
+_a = src.index('function __lcDrcPanel({project:i}){')
+_b = src.index('function __lcColorPanel(', _a)
+src = src[:_a] + 'function __lcDrcPanel(i){return __lcDrcPanelV2(i)}' + src[_b:]
+print('  ok W1 drc panel delegates to locatable version')
 
 if CHECK_ONLY:
     print('check only, not written')

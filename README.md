@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/november-is-your-birthday/HoleRoute3D/releases/latest"><img alt="download" src="https://img.shields.io/badge/download-v3.4.3-2ea043?style=for-the-badge"></a>
+  <a href="https://github.com/november-is-your-birthday/HoleRoute3D/releases/latest"><img alt="download" src="https://img.shields.io/badge/download-v3.4.4-2ea043?style=for-the-badge"></a>
   <img alt="platform" src="https://img.shields.io/badge/platform-Windows%20x64-0078D4">
   <img alt="base" src="https://img.shields.io/badge/upstream-v2.0.0-6b7280">
 </p>
@@ -86,14 +86,14 @@
 ### 2.1 普通用户：下载 Release，解压即用（推荐）
 
 1. 打开 **[Releases](https://github.com/november-is-your-birthday/HoleRoute3D/releases/latest)** 页面；
-2. 下载 `ProtoRoute3D-v3.4.3-cn-win-x64.zip`（约 130 MB）；
+2. 下载 `ProtoRoute3D-v3.4.4-cn-win-x64.zip`（约 130 MB）；
 3. **完整解压**到任意目录，例如 `D:\HoleRoute3D`；
 4. 双击其中的 `ProtoRoute 3D.exe`。
 
 包里已经带了完整的 Electron 运行时、依赖和打好补丁的 `app.asar`，
 **不需要安装 Python / Node，也不需要再下载上游版本打补丁**。
 
-- 窗口标题显示 **ProtoRoute 3D v3.4.3** 就说明版本正确（程序文件与 exe 名沿用上游内部命名，
+- 窗口标题显示 **ProtoRoute 3D v3.4.4** 就说明版本正确（程序文件与 exe 名沿用上游内部命名，
   项目名以「洞洞板布线 HoleRoute3D」为准）；
 - 首次运行 Windows 可能弹「已保护你的电脑」，点「更多信息 → 仍要运行」即可（本版没有代码签名）；
 - 解压目录里有一份 `使用说明.txt`，包含嘉立创导出步骤、基本流程与快捷键。
@@ -125,7 +125,7 @@ python build_asar.py           # 正式打包，旧包自动备份为 app.asar.p
 
 ```bash
 python tools/make_release.py --check   # 统计会打包哪些文件
-python tools/make_release.py           # 生成 release/ProtoRoute3D-v3.4.3-cn-win-x64.zip
+python tools/make_release.py           # 生成 release/ProtoRoute3D-v3.4.4-cn-win-x64.zip
 ```
 
 脚本只收运行本体（exe / dll / pak / locales / resources/app.asar 等）+ `docs/使用说明.txt`，
@@ -180,7 +180,7 @@ python tools/make_release.py           # 生成 release/ProtoRoute3D-v3.4.3-cn-w
 |---|---|
 | **工程** | 工程名称、板型（洞洞板 / 面包板）、板子尺寸、新建 / 打开 |
 | **导入** | 网表拖放区（`.net` / `.txt`），以及已导入文件列表 |
-| **DRC 检查** | 错误 / 警告数量与明细（跑过 DRC 后才出现内容） |
+| **DRC 检查** | 错误 / 警告数量与明细，每条标出**孔位 + 涉事引脚**，点一下相机就跳过去（跑过 DRC 后才出现内容） |
 | **AI 约束** | 自然语言指令解析出的放置 / 布线约束，分**硬约束 / 软约束**，需手动「确认添加」，之后可禁用或删除 |
 | **导入结果** | 元件、网络、引脚网络三张表，默认收起，点「展开 (n)」查看 |
 | **配色** | 板子 / 顶层圈 / 底层圈 / 高亮圈四色选择器 + 恢复默认 |
@@ -353,6 +353,10 @@ SPICE 网表不含引脚号，请用 Reports 菜单导出。格式细节见 `doc
 
 点「DRC 检查」（`D`），结果出现在左侧栏「DRC 检查」区块：错误 / 警告数量 + 明细。
 
+**每条都带定位信息**：右侧绿标签是孔位（如 `13,42`，走锡重叠这类「一条边」的错误显示成 `8,23 ↔ 8,24`），
+下面一行是涉事的 `位号.脚号（网络）`，例如 `C7.2（$1N11）`。**点任意一条**，相机立刻移到那个孔并打上红球标记，
+不用再自己数行列。「复制全部」可以把整份清单连同孔位、引脚一起复制出去。
+
 焊盘环的颜色同时会变：
 
 | 颜色 | 含义 |
@@ -430,7 +434,7 @@ SPICE 网表不含引脚号，请用 Reports 菜单导出。格式细节见 `doc
 | **自动布线** | 5 轮 + 有限拆线重布 | 增加 **pull-tight 后优化**（逐段拆开重布，更优才保留）→ 拐弯 −2~3 |
 | **继续布线** | 无此功能；「自动布线」会重算全部网络，上一轮结果被覆盖 | 新增「继续布线」：保留全部已有走锡/跳线，只补未连通网络，并按全量引脚重算 DRC |
 | **工程工具** | 无 | `build_asar.py` 打包脚本、`harness/` 离线回归（基准/消融/独立校验/飞线回归）、GitHub Actions |
-| **分发形态** | 只有源码仓库，用户需自行构建；无现成安装包 | 提供 **v3.4.3 免安装压缩包**（含 Electron 运行时），下载解压双击即用 |
+| **分发形态** | 只有源码仓库，用户需自行构建；无现成安装包 | 提供 **v3.4.4 免安装压缩包**（含 Electron 运行时），下载解压双击即用 |
 | **文档** | 一份 README | README + CHANGELOG + NOTICE + 使用说明.txt + Release 说明 |
 
 ### 5.2 我没有改的部分
@@ -556,7 +560,7 @@ tools/restore_official.bat              还原官方原版
 harness/                                离线回归（Node 运行，不需要启动 GUI）
 .github/workflows/verify.yml            CI：语法检查 + 快速回归
 docs/使用说明.txt                        随发布包分发给最终用户的上手说明
-docs/release-v3.4.3.md                  GitHub Release 页面文案（历史：release-v3.4.2.md、release-v3.4.1.md、release-v3.4.0.md、release-v3.3.2.md、release-v3.3.1.md、release-v3.3.0.md、release-v3.2.5.md、release-v3.0.0.md）
+docs/release-v3.4.4.md                  GitHub Release 页面文案（历史：release-v3.4.3.md、release-v3.4.2.md、release-v3.4.1.md、release-v3.4.0.md、release-v3.3.2.md、release-v3.3.1.md、release-v3.3.0.md、release-v3.2.5.md、release-v3.0.0.md）
 docs/screenshots/                       README 用的界面截图
 ```
 
