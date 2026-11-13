@@ -1,6 +1,6 @@
 {
   "name": "@perfboard-autoroute/web",
-  "version": "3.4.4",
+  "version": "3.4.5",
   "description": "ProtoRoute 3D v3.2 中文增强版：洞洞板 3D 摆放 / 自动布线 / DRC（非官方修改版，支持嘉立创网表）",
   "author": "zhuohanjiang",
   "private": true,

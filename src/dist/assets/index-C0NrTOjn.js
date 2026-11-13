@@ -956,33 +956,53 @@ function __lcLcName(side) {
   return side === "left" ? "最左一列" : side === "right" ? "最右一列" :
     side === "top" ? "最上一行" : "最下一行";
 }
-function __lcLineBusy(p, axis, index) {
+/* 统计某一行/列上到底有什么。
+   注意：只有 1 个点的走锡记录画不出任何东西（历史遗留的残片），却会占住行列，
+   让用户看着空板子却删不掉——所以 points.length < 2 一律不算占用，并在提交时清掉。
+   返回值把「元件」和「铜箔」分开，因为两者处理方式不同：元件必须用户自己移，
+   走锡/跳线所在的孔被删掉后本来就不存在了，可以跟着一起删。 */
+function __lcLineHits(p, axis, index) {
   var g = function (pt) { return axis === "x" ? pt[0] : pt[1]; };
-  var comps = p.components || [];
+  var out = { comps: [], traces: [], jumpers: [] };
+  var comps = (p && p.components) || [];
   for (var i = 0; i < comps.length; i += 1) {
     var c = comps[i];
     if (!c || !c.position) continue;
-    if (g(c.position) === index) return c.name;
-    var offs = c.pinOffsets || [];
-    for (var k = 0; k < offs.length; k += 1) {
-      var hole = null;
-      try { hole = Si(c, k + 1); } catch (e) { hole = null; }
-      if (hole && g(hole) === index) return c.name;
+    var hit = g(c.position) === index;
+    if (!hit) {
+      var offs = c.pinOffsets || [];
+      for (var k = 0; k < offs.length && !hit; k += 1) {
+        var hole = null;
+        try { hole = Si(c, k + 1); } catch (e) { hole = null; }
+        if (hole && g(hole) === index) hit = true;
+      }
     }
+    if (hit && out.comps.indexOf(c.name) < 0) out.comps.push(c.name);
   }
-  var rt = p.routing || {};
+  var rt = (p && p.routing) || {};
   var traces = rt.traces || [];
   for (var a = 0; a < traces.length; a += 1) {
     var pts = (traces[a] && traces[a].points) || [];
-    for (var b = 0; b < pts.length; b += 1) if (g(pts[b]) === index) return "走锡";
+    if (pts.length < 2) continue;
+    for (var b = 0; b < pts.length; b += 1) {
+      if (g(pts[b]) === index) { out.traces.push(a); break; }
+    }
   }
   var js = rt.jumpers || [];
   for (var j = 0; j < js.length; j += 1) {
     var jm = js[j];
     if (!jm || !jm.from || !jm.to) continue;
-    if (g(jm.from) === index || g(jm.to) === index) return "跳线";
+    if (g(jm.from) === index || g(jm.to) === index) out.jumpers.push(j);
   }
-  return null;
+  return out;
+}
+
+/* 破坏性操作用：sandbox / 测试环境没有 confirm 时按同意处理 */
+function __lcAsk(msg) {
+  try {
+    if (typeof window !== "undefined" && typeof window.confirm === "function") return !!window.confirm(msg);
+    return true;
+  } catch (e) { return true; }
 }
 function __lcBoardGrow(side, delta) {
   var pj = window.__lcProject;
@@ -1005,10 +1025,28 @@ function __lcBoardGrow(side, delta) {
   if (delta < 0 && cur <= MIN) { __lcToast(unit + "数已达下限 " + MIN); return; }
   var shiftX = side === "left" ? delta : 0;
   var shiftY = side === "top" ? delta : 0;
+  var dropT = {}, dropJ = {}, removedT = 0, removedJ = 0;
   if (delta < 0) {
     var idx = side === "left" ? 0 : side === "right" ? w - 1 : side === "top" ? 0 : h - 1;
-    var busy = __lcLineBusy(pj, horiz ? "x" : "y", idx);
-    if (busy) { __lcToast(__lcLcName(side) + "还有 " + busy + "，先移开再删除"); return; }
+    var hit = __lcLineHits(pj, horiz ? "x" : "y", idx);
+    // 元件必须用户自己移走（自动挪会改变电路布局）；铜箔不同——孔都没了，锡不可能留在空中
+    if (hit.comps.length) {
+      var list = hit.comps.slice(0, 3).join("、") + (hit.comps.length > 3 ? " 等" : "");
+      __lcToast(__lcLcName(side) + "还有 " + list + "，先移开再删除");
+      return;
+    }
+    removedT = hit.traces.length;
+    removedJ = hit.jumpers.length;
+    if (removedT || removedJ) {
+      var what = (removedT ? removedT + " 段走锡" : "") + (removedT && removedJ ? "、" : "") + (removedJ ? removedJ + " 根跳线" : "");
+      if (!__lcAsk(__lcLcName(side) + "上还有 " + what + "，删除这一" +
+        (horiz ? "列" : "行") + "会一并去掉它们。继续？")) {
+        __lcToast("已取消，未改动板子");
+        return;
+      }
+      hit.traces.forEach(function (i2) { dropT[i2] = 1; });
+      hit.jumpers.forEach(function (j2) { dropJ[j2] = 1; });
+    }
   }
   window.__lcCommit(function (p) {
     var bb = p.board;
@@ -1019,7 +1057,10 @@ function __lcBoardGrow(side, delta) {
       return Object.assign({}, c, { position: [c.position[0] + shiftX, c.position[1] + shiftY] });
     });
     var rt = p.routing || {};
-    var traces = (rt.traces || []).map(function (t) {
+    var traces = (rt.traces || []).filter(function (t, i2) {
+      // dropT：这一列/行上的铜箔；points<2：画不出来的残片，顺手清掉
+      return !dropT[i2] && t && (t.points || []).length >= 2;
+    }).map(function (t) {
       if ((!shiftX && !shiftY) || !t) return t;
       var o = Object.assign({}, t, {
         points: (t.points || []).map(function (q) { return [q[0] + shiftX, q[1] + shiftY]; })
@@ -1029,7 +1070,9 @@ function __lcBoardGrow(side, delta) {
       });
       return o;
     });
-    var jumpers = (rt.jumpers || []).map(function (j) {
+    var jumpers = (rt.jumpers || []).filter(function (j, i2) {
+      return !dropJ[i2] && j && j.from && j.to;
+    }).map(function (j) {
       if ((!shiftX && !shiftY) || !j) return j;
       return Object.assign({}, j, {
         from: [j.from[0] + shiftX, j.from[1] + shiftY],
@@ -1051,6 +1094,12 @@ function __lcBoardGrow(side, delta) {
       })
     });
   });
+  // 每次都明确回一句，避免上一次的提示留在屏幕上、让人以为这次也被拒了
+  var sizeNow = horiz ? (w + delta) + " 列" : (h + delta) + " 行";
+  var tail = (removedT ? "，同时移除 " + removedT + " 段走锡" : "") +
+    (removedJ ? "，同时移除 " + removedJ + " 根跳线" : "");
+  __lcToast((delta < 0 ? "已删除" + __lcLcName(side) : "已新增一" + (horiz ? "列" : "行")) +
+    "（现在 " + sizeNow + "）" + tail + "，可 Ctrl+Z 撤销");
 }
 
 /* ------------------------------------------------------------------

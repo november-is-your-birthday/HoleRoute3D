@@ -106,11 +106,16 @@ const t1 = vm.runInContext('__lcBridgeTraces(__p,__t)', Object.assign(bBox, { __
 assert(t1.length === 0, '无桥接时不改变入参');
 
 /* ---------- 4) 板尺寸四向增删 ---------- */
-function growBox(project) {
+function growBox(project, opts) {
   const toasts = [];
+  const confirms = [];
   const state = { project };
+  const win = { __lcProject: project, __lcCommit: fn => { state.project = fn(state.project); } };
+  if (opts && opts.confirm !== undefined) {
+    win.confirm = m => { confirms.push(m); return opts.confirm; };
+  }
   const gb = {
-    window: { __lcProject: project, __lcCommit: fn => { state.project = fn(state.project); } },
+    window: win,
     Math, JSON, String, Number, Array, Object, console,
     __lcToast: m => toasts.push(m),
     Zi: () => ({ capabilities: { canResizeWidth: true } }),
@@ -120,9 +125,9 @@ function growBox(project) {
     },
   };
   vm.createContext(gb);
-  ['__lcLcName', '__lcLineBusy', '__lcBoardGrow'].forEach(n =>
+  ['__lcLcName', '__lcLineHits', '__lcAsk', '__lcBoardGrow'].forEach(n =>
     vm.runInContext(grabFn(bundle, 'function ' + n + '('), gb));
-  return { gb, state, toasts };
+  return { gb, state, toasts, confirms };
 }
 function mkBoard(w, h, extra) {
   return Object.assign({
@@ -140,7 +145,7 @@ function mkBoard(w, h, extra) {
 }
 
 // 左加一列：宽度 +1，所有内容整体右移 1 格
-let { gb, state, toasts } = growBox(mkBoard(10, 10));
+let { gb, state, toasts, confirms } = growBox(mkBoard(10, 10));
 vm.runInContext('__lcBoardGrow("left",1)', gb);
 let p = state.project;
 assert(p.board.width === 11 && p.board.height === 10, '左加一列：宽度 10 → 11');
@@ -182,6 +187,52 @@ assert(JSON.stringify(p.components[0].position) === '[2,3]', '缩右列不移动
 vm.runInContext('__lcBoardGrow("top",-1)', gb);
 p = state.project;
 assert(p.board.height === 9 && JSON.stringify(p.components[0].position) === '[2,2]', '缩上侧：高度 -1 且内容上移');
+
+// v3.4.5：边界上只有铜箔时不再硬拒绝 —— 连同行列一起删；元件仍然拒绝
+function mkSmall(extra) {
+  return Object.assign({
+    board: { width: 6, height: 6, kind: 'perfboard' },
+    components: [{ id: 'a', name: 'A', mounted: true, position: [2, 2], pinOffsets: [[0, 0], [2, 0]] }],
+    routing: { traces: [], jumpers: [], warnings: [] },
+  }, extra || {});
+}
+
+// 只有一个点的走锡（画不出任何东西）不能挡住删列，并且会被清掉
+const degen = mkSmall({ routing: { traces: [{ id: 'd1', net: 'MANUAL', points: [[0, 0]], layer: 'bottom', locked: true }], jumpers: [], warnings: [] } });
+({ gb, state, toasts } = growBox(degen));
+vm.runInContext('__lcBoardGrow("left",-1)', gb);
+assert(state.project.board.width === 5, '只有一个点的残片不再挡住删列（宽 ' + state.project.board.width + '）');
+assert(state.project.routing.traces.length === 0, '残片顺带被清掉');
+
+// 右边界有真走锡：确认后连铜箔一起删
+const edge = mkSmall({ routing: { traces: [{ id: 't1', net: 'N1', points: [[4, 1], [5, 1]] }, { id: 't2', net: 'N2', points: [[1, 1], [1, 2]] }], jumpers: [], warnings: [] } });
+({ gb, state, toasts, confirms } = growBox(edge, { confirm: true }));
+vm.runInContext('__lcBoardGrow("right",-1)', gb);
+assert(state.project.board.width === 5, '最右列有走锡时确认后可以删列');
+assert(state.project.routing.traces.length === 1 && state.project.routing.traces[0].id === 't2', '只删掉碰到该列的走锡');
+assert(confirms.length === 1 && confirms[0].indexOf('1 段走锡') >= 0, '确认框说明会删多少走锡（' + confirms[0] + '）');
+assert(toasts.some(t => t.indexOf('同时移除 1 段走锡') >= 0), '成功提示写明移除了几段走锡');
+
+// 取消确认则板与铜箔都不动
+({ gb, state, toasts } = growBox(mkSmall({ routing: { traces: [{ id: 't1', net: 'N1', points: [[4, 1], [5, 1]] }], jumpers: [], warnings: [] } }), { confirm: false }));
+vm.runInContext('__lcBoardGrow("right",-1)', gb);
+assert(state.project.board.width === 6 && state.project.routing.traces.length === 1, '取消确认则板与走锡都不变');
+assert(toasts.some(t => t.indexOf('已取消') >= 0), '取消时给出提示');
+
+// 跳线同理
+({ gb, state, toasts } = growBox(mkSmall({ routing: { traces: [], jumpers: [{ id: 'j1', net: 'N1', from: [1, 5], to: [3, 5] }], warnings: [] } }), { confirm: true }));
+vm.runInContext('__lcBoardGrow("bottom",-1)', gb);
+assert(state.project.board.height === 5 && state.project.routing.jumpers.length === 0, '最下一行的跳线随行一起删');
+assert(toasts.some(t => t.indexOf('1 根跳线') >= 0), '提示写明移除了几根跳线');
+
+// 元件优先：列上有元件就拒绝，绝不能因为「确认过」就偷偷删元件
+const mixed = mkSmall({ routing: { traces: [{ id: 't1', net: 'N1', points: [[5, 1], [5, 2]] }], jumpers: [], warnings: [] } });
+mixed.components[0].position = [5, 2];
+({ gb, state, toasts } = growBox(mixed, { confirm: true }));
+vm.runInContext('__lcBoardGrow("right",-1)', gb);
+assert(state.project.board.width === 6, '列上有元件时仍然拒绝');
+assert(state.project.routing.traces.length === 1, '拒绝时不动走锡');
+assert(toasts.some(t => t.indexOf('先移开再删除') >= 0), '拒绝原因指向元件');
 
 // 边界与面包板
 ({ gb, state, toasts } = growBox(mkBoard(150, 10)));
