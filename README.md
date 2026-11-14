@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/november-is-your-birthday/HoleRoute3D/releases/latest"><img alt="download" src="https://img.shields.io/badge/download-v3.4.5-2ea043?style=for-the-badge"></a>
+  <a href="https://github.com/november-is-your-birthday/HoleRoute3D/releases/latest"><img alt="download" src="https://img.shields.io/badge/download-v3.4.6-2ea043?style=for-the-badge"></a>
   <img alt="platform" src="https://img.shields.io/badge/platform-Windows%20x64-0078D4">
   <img alt="base" src="https://img.shields.io/badge/upstream-v2.0.0-6b7280">
 </p>
@@ -86,14 +86,14 @@
 ### 2.1 普通用户：下载 Release，解压即用（推荐）
 
 1. 打开 **[Releases](https://github.com/november-is-your-birthday/HoleRoute3D/releases/latest)** 页面；
-2. 下载 `ProtoRoute3D-v3.4.5-cn-win-x64.zip`（约 130 MB）；
+2. 下载 `ProtoRoute3D-v3.4.6-cn-win-x64.zip`（约 130 MB）；
 3. **完整解压**到任意目录，例如 `D:\HoleRoute3D`；
 4. 双击其中的 `ProtoRoute 3D.exe`。
 
 包里已经带了完整的 Electron 运行时、依赖和打好补丁的 `app.asar`，
 **不需要安装 Python / Node，也不需要再下载上游版本打补丁**。
 
-- 窗口标题显示 **ProtoRoute 3D v3.4.5** 就说明版本正确（程序文件与 exe 名沿用上游内部命名，
+- 窗口标题显示 **ProtoRoute 3D v3.4.6** 就说明版本正确（程序文件与 exe 名沿用上游内部命名，
   项目名以「洞洞板布线 HoleRoute3D」为准）；
 - 首次运行 Windows 可能弹「已保护你的电脑」，点「更多信息 → 仍要运行」即可（本版没有代码签名）；
 - 解压目录里有一份 `使用说明.txt`，包含嘉立创导出步骤、基本流程与快捷键。
@@ -125,7 +125,7 @@ python build_asar.py           # 正式打包，旧包自动备份为 app.asar.p
 
 ```bash
 python tools/make_release.py --check   # 统计会打包哪些文件
-python tools/make_release.py           # 生成 release/ProtoRoute3D-v3.4.5-cn-win-x64.zip
+python tools/make_release.py           # 生成 release/ProtoRoute3D-v3.4.6-cn-win-x64.zip
 ```
 
 脚本只收运行本体（exe / dll / pak / locales / resources/app.asar 等）+ `docs/使用说明.txt`，
@@ -317,6 +317,22 @@ SPICE 网表不含引脚号，请用 Reports 菜单导出。格式细节见 `doc
 > 悬空的（未放置）元件会在板面焊盘位置显示**黄色环**，提示它将会插到哪些孔。
 > 按住 `Shift` 拖动时**不会**弹出属性面板，避免挡住视图；单击才会显示。
 
+#### 三极管脚序（E / B / C）
+
+三极管的脚位**没有跨型号的统一标准**：同样是 TO-92，S8050 是 E-B-C，BC547 就是 C-B-E；
+TO-220 绝大多数是 B-C-E，TO-3 是 B-E-C（外壳为 C）。所以软件不替你猜，由你在属性面板里指定：
+
+1. 选中三极管 → 右侧「元件属性」出现「**三极管脚序**」下拉，共 6 种排布（`1=E 2=B 3=C`、`1=E 2=C 3=B` …）。
+   选中后 3D 模型上**每只脚正上方**立刻标出对应的 `E` / `B` / `C`；
+2. 下拉下方一行是**脚号 → 角色对照**，例如 `脚1 E ｜ 脚2 B ｜ 脚3 C（E-B-C）`，
+   下方小字写明判定基准：**平面对自己、引脚朝下，从左→右为 1→2→3**；
+3. TO-92 的模型上有一条**浅色扁平面**（`__lcFlatFace`），那就是封装印字面——朝它就是「平面对自己」的方向。
+   旋转 180° 后平方面跟着转，脚序也随之反向，不用自己脑补。
+
+没有指定脚序时只显示 `1` / `2` / `3`，**绝不猜极性**（猜错的代价是焊反烧件）。
+如果网表里已经有真实引脚名（KiCad 的 `pinInfo` 会给出 `E`/`B`/`C`），则优先用网表的名字；
+嘉立创 / Protel 导入器会把引脚名合成为脚号本身（`"1"`/`"2"`/`"3"`），那种不算有效名字，仍以手选脚序为准。
+
 ### 4.4 布线
 
 **自动布线**：点顶部「自动布线」（`A`）。算法会为每个网络生成反面走锡，遇到无法直连的地方自动加跳线，
@@ -434,7 +450,7 @@ SPICE 网表不含引脚号，请用 Reports 菜单导出。格式细节见 `doc
 | **自动布线** | 5 轮 + 有限拆线重布 | 增加 **pull-tight 后优化**（逐段拆开重布，更优才保留）→ 拐弯 −2~3 |
 | **继续布线** | 无此功能；「自动布线」会重算全部网络，上一轮结果被覆盖 | 新增「继续布线」：保留全部已有走锡/跳线，只补未连通网络，并按全量引脚重算 DRC |
 | **工程工具** | 无 | `build_asar.py` 打包脚本、`harness/` 离线回归（基准/消融/独立校验/飞线回归）、GitHub Actions |
-| **分发形态** | 只有源码仓库，用户需自行构建；无现成安装包 | 提供 **v3.4.5 免安装压缩包**（含 Electron 运行时），下载解压双击即用 |
+| **分发形态** | 只有源码仓库，用户需自行构建；无现成安装包 | 提供 **v3.4.6 免安装压缩包**（含 Electron 运行时），下载解压双击即用 |
 | **文档** | 一份 README | README + CHANGELOG + NOTICE + 使用说明.txt + Release 说明 |
 
 ### 5.2 我没有改的部分
@@ -561,7 +577,7 @@ tools/restore_official.bat              还原官方原版
 harness/                                离线回归（Node 运行，不需要启动 GUI）
 .github/workflows/verify.yml            CI：语法检查 + 快速回归
 docs/使用说明.txt                        随发布包分发给最终用户的上手说明
-docs/release-v3.4.5.md                  GitHub Release 页面文案（历史：release-v3.4.4.md、release-v3.4.3.md、release-v3.4.2.md、release-v3.4.1.md、release-v3.4.0.md、release-v3.3.2.md、release-v3.3.1.md、release-v3.3.0.md、release-v3.2.5.md、release-v3.0.0.md）
+docs/release-v3.4.6.md                  GitHub Release 页面文案（历史：release-v3.4.5.md、release-v3.4.4.md、release-v3.4.3.md、release-v3.4.2.md、release-v3.4.1.md、release-v3.4.0.md、release-v3.3.2.md、release-v3.3.1.md、release-v3.3.0.md、release-v3.2.5.md、release-v3.0.0.md）
 docs/screenshots/                       README 用的界面截图
 ```
 

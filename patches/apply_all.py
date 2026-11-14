@@ -600,15 +600,22 @@ NEW_GP = '''function GP(i,t,names){
   r.moveTo(-.82,-.26),r.lineTo(.82,-.26),r.absarc(0,-.26,.82,0,Math.PI,!1),r.lineTo(-.82,-.26);
   const l=new H0(r,{depth:.52,bevelEnabled:!0,bevelThickness:.04,bevelSize:.04,bevelSegments:3});l.center();
   const c=new Vt(l,Ne.blackPlastic);c.rotation.x=-Math.PI/2,c.position.set(s[0],1.38,s[1]),e.add(c);
+  /* 平面（印字面）朝向 +Z，用一条浅色窄条显式标出来：
+   * TO-92 的脚序基准就是「平面对自己」，不标出来用户没法判断哪边是 1 脚。 */
+  const fb=new Vt(new on(1.34,.24,.03),new qi({color:11708635}));
+  fb.position.set(s[0],1.38,s[1]+.285),fb.userData.__lcFlatFace=1,e.add(fb);
   const f=.82;
   t.forEach(function(pr,idx){
     const h=pr[0],d=pr[1];
     if(Math.abs(h-s[0])>f-.04){const g=s[0]+Math.sign(h-s[0])*(f-.04);Ii(e,[g,d],[h,d],1.12)}
     bn(e,h,d,1.16);
     const nm=names&&names[idx]?String(names[idx]):"";
-    if(nm)Un(e,nm,h,1.02,d+.52,16777215,.62)
+    /* 字要浮在本体上方、且水平正对各自的孔：原来在 +Z 且压在元件底下，
+     * 俯视时中间那只脚的名字被本体整个挡住，等于没标；挪到外侧又会偏出
+     * 整整一格，看起来像标的是隔壁的孔。 */
+    if(nm)Un(e,nm,h,1.85,d,16777215,.62)
   });
-  Un(e,i,s[0],2,s[1]+.48,4194258,1.8);
+  Un(e,i,s[0],2.3,s[1]+.48,4194258,1.8);
   return e
 }'''
 src = rep_fn(src, 'function GP(i,t){const e=new Re,s=W0(t)', NEW_GP, 'P4 to92 E/C/B labels')
@@ -632,12 +639,92 @@ NEW_UP = '''function UP(i,t,names){
 }'''
 src = rep_fn(src, 'function UP(i,t){const e=new Re,[s,r]=Qa(t)', NEW_UP, 'P5 led A/K labels + cathode bar')
 
+# P5b：TO-220 / TO-247 / TO-3 / TO-39 也把每个脚的字母标出来。
+# 之前只有 TO-92 和 LED 会标，这几种封装在 3D 上一个字母都没有，
+# 用户只能对着外部封装图数脚，极容易和软件里的脚号对错。
+NEW_TO220 = '''function FP(i,t,names){
+  const e=new Re,s=Ji(t),r=s.centerX,l=s.centerZ,c=new Vt(new on(2.25,2.2,.55),Ne.blackPlastic);
+  c.position.set(r,1.72,l+.36),e.add(c);
+  const f=new Vt(new on(2.5,.12,.7),Ne.lead);f.position.set(r,2.88,l+.36),e.add(f);
+  const h=new Vt(new ze(.2,.2,.135,24),new Pe({color:724756,roughness:.35}));
+  h.rotation.x=Math.PI/2,h.position.set(r,2.92,l+.36),e.add(h);
+  t.forEach(([d,g])=>{const _=r+Math.sign(d-r)*1.125;Math.abs(d-r)>1.125?(Ii(e,[_,g],[d,g],.62),bn(e,d,g,.62)):bn(e,d,g,1.05)});
+  __lcPinLetters(e,names,t,{y:1.02,dz:-.48,scale:.5});
+  Un(e,i,r,2.12,l+.72,4194258,1.7);
+  return e
+}'''
+src = rep_fn(src, 'function FP(i,t){const e=new Re,s=Ji(t)', NEW_TO220, 'P7 to220 pin letters')
+
+NEW_TO39 = '''function zP(i,t,names){
+  const e=new Re,s=W0(t),r=new Vt(new ze(.88,.88,.85,36),Ne.lead);
+  r.position.set(s[0],1.25,s[1]),e.add(r);
+  const l=new Vt(new ze(.82,.88,.18,36),new Pe({color:15067115,roughness:.18,metalness:.65}));
+  l.position.set(s[0],1.78,s[1]),e.add(l);
+  const c=new Vt(new on(.35,.12,.45),Ne.lead);
+  c.position.set(s[0]-.72,1.25,s[1]),e.add(c);
+  t.forEach(([f,h])=>{const d=f-s[0],g=h-s[1],_=Math.hypot(d,g);
+    if(_>.78){const S=.78/_;Ii(e,[s[0]+d*S,s[1]+g*S],[f,h],.85)}bn(e,f,h,.86)});
+  __lcPinLetters(e,names,t,{y:1.02,cx:s[0],cz:s[1],kx:.6,kz:.6,scale:.46});
+  Un(e,i,s[0],1.98,s[1]+.48,1975339,1.6);
+  return e
+}'''
+src = rep_fn(src, 'function zP(i,t){const e=new Re,s=W0(t)', NEW_TO39, 'P8 to39 pin letters')
+
+NEW_TO3 = '''function tR(i,t,names){
+  const e=new Re,s=W0(t),r=new Vt(new ze(1.25,1.25,.34,44),Ne.lead);
+  r.position.set(s[0],1.28,s[1]),e.add(r);
+  const l=new Vt(new ze(.98,1.18,.16,44),new Pe({color:15067115,roughness:.2,metalness:.7}));
+  l.position.set(s[0],1.52,s[1]),e.add(l);
+  t.forEach(([c,f])=>{const h=c-s[0],d=f-s[1],g=Math.hypot(h,d);
+    if(g>1.08){const _=1.08/g;Ii(e,[s[0]+h*_,s[1]+d*_],[c,f],1.1)}bn(e,c,f,1.1)});
+  __lcPinLetters(e,names,t,{y:1.02,cx:s[0],cz:s[1],kx:.75,kz:.75,scale:.5});
+  Un(e,i,s[0],1.8,s[1]+.45,1975339,1.7);
+  return e
+}'''
+src = rep_fn(src, 'function tR(i,t){const e=new Re,s=W0(t)', NEW_TO3, 'P9 to3 pin letters')
+
+NEW_TO247 = '''function eR(i,t,names){
+  const e=new Re,s=Ji(t),r=s.centerX,l=s.centerZ,
+    c=new Vt(new on(Math.max(3.1,s.width+.7),2.9,.65),Ne.blackPlastic);
+  c.position.set(r,1.88,l+.42),e.add(c);
+  const f=new Vt(new on(Math.max(3.3,s.width+.9),.14,.85),Ne.lead);f.position.set(r,3.42,l+.42),e.add(f);
+  const h=new Vt(new ze(.24,.24,.15,24),new Pe({color:724756,roughness:.35}));
+  h.rotation.x=Math.PI/2,h.position.set(r,3.46,l+.42),e.add(h);
+  t.forEach(([d,g])=>bn(e,d,g,1.15));
+  __lcPinLetters(e,names,t,{y:1.02,dz:-.5,scale:.55});
+  Un(e,i,r,2.35,l+.8,4194258,1.8);
+  return e
+}'''
+src = rep_fn(src, 'function eR(i,t){const e=new Re,s=Ji(t)', NEW_TO247, 'P10 to247 pin letters')
+
+for _k, _fn in (('to39', 'zP'), ('to220', 'FP'), ('to3', 'tR'), ('to247', 'eR')):
+    src = rep(src, '%s:i=>%s(i.label??"Q",hn(i))' % (_k, _fn),
+              '%s:i=>%s(i.label??"Q",hn(i),i.pinNames)' % (_k, _fn),
+              'P11 %s dispatch passes pinNames' % _k)
+
+# 文字精灵把自己的文字记在 userData 上：既方便以后做「点引脚看脚名」，
+# 也让自动化能直接核对「哪个孔上标的是哪个字母」。
+src = rep(src, '_.position.set(e,s,r),_.scale.set(c,c*.25,1),i.add(_)}',
+          '_.position.set(e,s,r),_.scale.set(c,c*.25,1),_.userData.__lcLabel=t,i.add(_)}',
+          'P12 text sprite keeps its own text')
+
 PIN_ORDER_SELECT = ('P.jsxs("label",{children:[P.jsx("span",{children:"三极管脚序"}),'
                     'P.jsx("select",{value:O.pinOrder||"",onChange:T=>v({pinOrder:T.target.value||void 0}),children:['
-                    'P.jsx("option",{value:"",children:"未指定（显示 1/2/3）"}),'
-                    'P.jsx("option",{value:"EBC",children:"1=E 2=B 3=C（E-B-C）"}),'
-                    'P.jsx("option",{value:"CBE",children:"1=C 2=B 3=E（C-B-E）"}),'
-                    'P.jsx("option",{value:"BCE",children:"1=B 2=C 3=E（B-C-E）"})]})]}),')
+                    'P.jsx("option",{value:"",children:"未指定（只显示脚号）"}),'
+                    'P.jsx("option",{value:"EBC",children:"1=E 2=B 3=C"}),'
+                    'P.jsx("option",{value:"ECB",children:"1=E 2=C 3=B"}),'
+                    'P.jsx("option",{value:"BCE",children:"1=B 2=C 3=E"}),'
+                    'P.jsx("option",{value:"BEC",children:"1=B 2=E 3=C"}),'
+                    'P.jsx("option",{value:"CBE",children:"1=C 2=B 3=E"}),'
+                    'P.jsx("option",{value:"CEB",children:"1=C 2=E 3=B"})]}),'
+                    'P.jsx("div",{onClick:T=>T.preventDefault(),style:{flexBasis:"100%",width:"100%",'
+                    'gridColumn:"1 / -1",marginTop:"2px",fontSize:"11px",lineHeight:"1.45",'
+                    'color:"var(--ui-text-dim,#8b98a8)",whiteSpace:"normal",wordBreak:"break-word"},'
+                    'children:__lcTriPinTable(O)}),'
+                    'P.jsx("div",{onClick:T=>T.preventDefault(),style:{flexBasis:"100%",width:"100%",'
+                    'gridColumn:"1 / -1",fontSize:"11px",lineHeight:"1.45",'
+                    'color:"var(--ui-text-dim,#7d8899)",whiteSpace:"normal",wordBreak:"break-word"},'
+                    'children:"基准：平面对自己、引脚朝下，从左→右为 1→2→3。实物顺序不同就换一种排布。"})]}),')
 src = rep(src, 'onChange:T=>v({value:T.target.value})})]}),',
           'onChange:T=>v({value:T.target.value})})]}),'
           '["to92","to220","to3","to247","to39"].indexOf(O.kind)>=0&&' + PIN_ORDER_SELECT,

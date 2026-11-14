@@ -41,15 +41,19 @@ function __lcHistoryLimit() {
   return Math.max(20, Math.min(1000, v));
 }
 
-/* ---------- 引脚名规划：pinInfo > 字母脚表 > 手选脚序 > 数字 ---------- */
-var __lcPinLetterTables = {
-  /* 三极管：按「脚 1 / 脚 2 / 脚 3」给出 E・B・C 的三种常见排布 */
-  to92: { EBC: ["E", "B", "C"], CBE: ["C", "B", "E"], BCE: ["B", "C", "E"] },
-  to220: { EBC: ["B", "C", "E"], CBE: ["B", "C", "E"], BCE: ["B", "C", "E"] },
-  to3: { EBC: ["B", "C", "E"], CBE: ["B", "C", "E"], BCE: ["B", "C", "E"] },
-  to247: { EBC: ["B", "C", "E"], CBE: ["B", "C", "E"], BCE: ["B", "C", "E"] },
-  to39: { EBC: ["E", "B", "C"], CBE: ["C", "B", "E"], BCE: ["B", "C", "E"] }
-};
+/* ---------- 引脚名规划：pinInfo > 手选脚序 > 数字 ---------- */
+/* 三极管封装：只有这几类才把手选脚序解释成 E/C/B 角色 */
+var __lcTriKinds = { to92: 1, to39: 1, to220: 1, to247: 1, to3: 1 };
+/* 各封装的常见排布，仅用于属性面板给「推荐值」提示，判定一律按用户实际选择 */
+var __lcPinOrderPresets = { to92: "EBC", to39: "EBC", to220: "BCE", to247: "BCE", to3: "BEC" };
+/* 手选脚序就是「逐脚角色」：EBC 表示脚1=E、脚2=B、脚3=C。
+ * 不再按封装查表 —— 以前 to220/to3/to247 三个键全返回 B-C-E，
+ * 用户选 EBC 得到的却是 1=B 2=C 3=E，与封装完全对不上。 */
+function __lcPinOrderOf(pinOrder) {
+  var key = String(pinOrder == null ? "" : pinOrder).toUpperCase().replace(/\s+/g, "");
+  if (!key || !/^[CEB]+$/.test(key)) return "";
+  return key;
+}
 function __lcPinNamePlan(kind, pinInfoEntry, pinOrder, pinCount) {
   var n = Math.max(1, Number(pinCount) || 0);
   var out = [], i;
@@ -70,10 +74,16 @@ function __lcPinNamePlan(kind, pinInfoEntry, pinOrder, pinCount) {
       return names;
     }
   }
-  /* 2) 用户在属性面板手选的脚序 */
-  var table = __lcPinLetterTables[kind];
-  var key = String(pinOrder || "").toUpperCase();
-  if (table && table[key] && table[key].length >= n) return table[key].slice(0, n);
+  /* 2) 用户在属性面板手选的脚序（逐脚角色，与封装无关） */
+  if (__lcTriKinds[kind]) {
+    var key = __lcPinOrderOf(pinOrder);
+    if (key) {
+      out = [];
+      /* 脚序短于实际脚数时，多出来的脚退回脚号，不编造角色 */
+      for (i = 0; i < n; i += 1) out.push(key.charAt(i) || String(i + 1));
+      return out;
+    }
+  }
   /* 3) 无依据时只标脚号，不猜极性 */
   out = [];
   for (i = 1; i <= n; i += 1) out.push(String(i));
@@ -132,6 +142,55 @@ function __lcPickJumper(ev) {
     return __lcPinNamePlan(c.kind, pi[c.name], c.pinOrder, n);
   } catch (e) {
     return [];
+  }
+}
+
+/* 属性面板里的「脚号 → 角色」对照行：让用户能直接拿实物封装图核对。
+ * 只列脚号与角色，不列绝对坐标 —— 那个随摆放位置和旋转变化，看着更晕。 */
+function __lcTriPinTable(c) {
+  try {
+    var offs = (c && c.pinOffsets) || [];
+    if (!offs.length) return "该封装没有引脚信息";
+    var names = __lcPinNamesOf(c);
+    var parts = [];
+    for (var i = 0; i < offs.length; i += 1) {
+      var nm = names[i] || String(i + 1);
+      parts.push("脚" + (i + 1) + " " + nm);
+    }
+    var txt = parts.join("  ｜  ");
+    var rec = __lcPinOrderPresets[c.kind];
+    var key = __lcPinOrderOf(c.pinOrder);
+    if (!key) {
+      txt += "　（未指定脚序，只显示脚号）";
+      if (rec) txt += "　本封装常见：" + rec.split("").join("-");
+      return txt;
+    }
+    return txt + "　（" + key.split("").join("-") + "）";
+  } catch (e) {
+    return "";
+  }
+}
+
+/* 给任意封装的每个脚标字母。
+ * 以前只有 TO-92 和 LED 会标，TO-220 / TO-247 / TO-3 / TO-39 上压根看不到
+ * E/C/B，用户只能靠外部封装图猜 —— 这也是「标注和封装对不上」的一部分。 */
+function __lcPinLetters(g, names, pts, cfg) {
+  if (!g || !names || !pts || !pts.length) return;
+  var o = cfg || {};
+  var n = Math.min(names.length, pts.length);
+  var y = o.y == null ? 1.02 : o.y;
+  var sc = o.scale || 0.55;
+  var col = o.color || 16777215;
+  var kx = o.kx || 0, kz = o.kz || 0;
+  var fx = o.dx || 0, fz = o.dz || 0;
+  for (var i = 0; i < n; i += 1) {
+    var nm = names[i] ? String(names[i]) : "";
+    if (!nm) continue;
+    var px = pts[i][0], pz = pts[i][1];
+    /* 圆形封装（TO-39 / TO-3）把字往引脚外侧推，避免压在罐体上 */
+    var x = px + fx + (o.cx == null ? 0 : (px - o.cx) * kx);
+    var z = pz + fz + (o.cz == null ? 0 : (pz - o.cz) * kz);
+    Un(g, nm, x, y, z, col, sc);
   }
 }
 
