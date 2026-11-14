@@ -54,6 +54,15 @@ function __lcPinOrderOf(pinOrder) {
   if (!key || !/^[CEB]+$/.test(key)) return "";
   return key;
 }
+/* 预设排布用的暖黄色（0xFFC857）。3D 上白色 = 有确切依据，
+ * 黄色 = 「还没选脚序，先按这个封装的常见排布标着」，一眼能区分。 */
+var __lcPresetInk = 16762967;
+/* 名字来源写在返回数组上：3D 建模据此换色，属性面板据此改文案。
+ * 数组挂属性不参与 JSON 序列化，不会写进工程文件。 */
+function __lcPinPlanTag(out, from) {
+  try { out.__lcFrom = from; } catch (e) {}
+  return out;
+}
 function __lcPinNamePlan(kind, pinInfoEntry, pinOrder, pinCount) {
   var n = Math.max(1, Number(pinCount) || 0);
   var out = [], i;
@@ -71,7 +80,7 @@ function __lcPinNamePlan(kind, pinInfoEntry, pinOrder, pinCount) {
     }
     if (real) {
       for (i = 0; i < n; i += 1) if (!names[i] || /^\d+$/.test(names[i])) names[i] = String(i + 1);
-      return names;
+      return __lcPinPlanTag(names, "pinInfo");
     }
   }
   /* 2) 用户在属性面板手选的脚序（逐脚角色，与封装无关） */
@@ -81,13 +90,22 @@ function __lcPinNamePlan(kind, pinInfoEntry, pinOrder, pinCount) {
       out = [];
       /* 脚序短于实际脚数时，多出来的脚退回脚号，不编造角色 */
       for (i = 0; i < n; i += 1) out.push(key.charAt(i) || String(i + 1));
-      return out;
+      return __lcPinPlanTag(out, "manual");
+    }
+    /* 3) 还没选脚序：按本封装的常见排布标出来（黄色）。
+     *    以前这里直接退回 1/2/3，3D 上等于「没有 EBC 标注」——用户提的就是这一点。
+     *    预设只是默认展示，不写进工程；实物不符时改下拉即可。 */
+    var pre = __lcPinOrderPresets[kind];
+    if (pre) {
+      out = [];
+      for (i = 0; i < n; i += 1) out.push(pre.charAt(i) || String(i + 1));
+      return __lcPinPlanTag(out, "preset");
     }
   }
-  /* 3) 无依据时只标脚号，不猜极性 */
+  /* 4) 无依据时只标脚号，不猜极性 */
   out = [];
   for (i = 1; i <= n; i += 1) out.push(String(i));
-  return out;
+  return __lcPinPlanTag(out, "number");
 }
 
 /* ---------- 跳线打标 / 命中 ---------- */
@@ -161,14 +179,23 @@ function __lcTriPinTable(c) {
     var rec = __lcPinOrderPresets[c.kind];
     var key = __lcPinOrderOf(c.pinOrder);
     if (!key) {
-      txt += "　（未指定脚序，只显示脚号）";
-      if (rec) txt += "　本封装常见：" + rec.split("").join("-");
+      if (rec) {
+        txt += "　（未指定脚序，3D 上按本封装常见排布 " + rec.split("").join("-") +
+          " 暂标，黄色；与实物不符就在上面换一种）";
+      } else {
+        txt += "　（未指定脚序，只显示脚号）";
+      }
       return txt;
     }
     return txt + "　（" + key.split("").join("-") + "）";
   } catch (e) {
     return "";
   }
+}
+
+/* 标注颜色：有确切依据（网表 / 手选）用白，按常见排布暂标用暖黄。 */
+function __lcPinInk(names) {
+  return (names && names.__lcFrom === "preset") ? __lcPresetInk : 16777215;
 }
 
 /* 给任意封装的每个脚标字母。

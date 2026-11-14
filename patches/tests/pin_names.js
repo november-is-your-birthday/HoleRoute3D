@@ -1,5 +1,6 @@
 // 回归测试：三极管 / LED 的 3D 引脚名规划。
-// 原则：不猜极性。网表给了引脚名就用；用户手选了脚序就用；都没有就只显示 1/2/3。
+// 原则：有确切依据就用（网表 pinInfo > 手选脚序）；都没有时按本封装的常见排布暂标，
+//       并用暖黄色 + 面板文案说明「这是默认、不是你选的」，不再退回 1/2/3。
 'use strict';
 const fs = require('fs');
 const vm = require('vm');
@@ -32,6 +33,7 @@ vm.runInContext(
   grabDecl(bundle, '__lcTriKinds') +
   grabDecl(bundle, '__lcPinOrderPresets') +
   grabFn(bundle, 'function __lcPinOrderOf(') +
+  grabFn(bundle, 'function __lcPinPlanTag(') +
   grabFn(bundle, 'function __lcPinNamePlan('),
   sandbox);
 
@@ -51,8 +53,10 @@ assert(eq(plan('to92', { 1: { name: 'E' }, 2: { name: 'B' }, 3: { name: 'C' } },
 //     必须让手选脚序生效，否则三极管永远标不出 E/C/B。
 assert(eq(plan('to92', { 1: { name: '1' }, 2: { name: '2' }, 3: { name: '3' } }, 'EBC', 3), ['E', 'B', 'C']),
   '合成脚号名的 pinInfo 不阻断手选脚序');
-assert(eq(plan('to92', { 1: { name: '1' }, 2: { name: '2' }, 3: { name: '3' } }, null, 3), ['1', '2', '3']),
-  '合成脚号名且无手选脚序时仍显示脚号');
+assert(eq(plan('to92', { 1: { name: '1' }, 2: { name: '2' }, 3: { name: '3' } }, null, 3), ['E', 'B', 'C']),
+  '合成脚号名且无手选脚序时按本封装常见排布标（不是一片 1/2/3）');
+assert(vm.runInContext('__lcPinNamePlan("to92",{1:{name:"1"},2:{name:"2"},3:{name:"3"}},null,3).__lcFrom', sandbox) === 'preset',
+  '合成脚号名仍归入 preset（黄色），不冒充网表给的名字');
 assert(eq(plan('to92', { 1: { name: '1' }, 2: { name: 'B' }, 3: { name: '3' } }, 'CBE', 3), ['1', 'B', '3']),
   '混有真实名字时以 pinInfo 为准（真实名优先于手选脚序）');
 
@@ -86,9 +90,19 @@ assert(vm.runInContext('__lcPinOrderPresets.to220', sandbox) === 'BCE', 'TO-220 
 assert(vm.runInContext('__lcPinOrderPresets.to3', sandbox) === 'BEC', 'TO-3 推荐 B-E-C');
 assert(eq(plan('to220', null, 'ECB', 3), ['E', 'C', 'B']), '推荐值与实际选择无关');
 
-// 4) 什么都没有 → 只显示脚号，绝不猜
-assert(eq(plan('to92', null, null, 3), ['1', '2', '3']), '无依据时只显示 1/2/3');
-assert(eq(plan('to92', {}, '', 3), ['1', '2', '3']), '空字符串脚序等同未指定');
+// 4) 没选脚序 → 按本封装常见排布标出来（黄色暂标），不再是一片 1/2/3
+assert(eq(plan('to92', null, null, 3), ['E', 'B', 'C']), '未指定脚序时 TO-92 按常见 E-B-C 标出');
+assert(eq(plan('to92', {}, '', 3), ['E', 'B', 'C']), '空字符串脚序等同未指定（同样按常见排布）');
+assert(eq(plan('to220', null, null, 3), ['B', 'C', 'E']), '未指定脚序时 TO-220 按常见 B-C-E 标出');
+assert(eq(plan('to3', null, null, 3), ['B', 'E', 'C']), '未指定脚序时 TO-3 按常见 B-E-C 标出');
+assert(vm.runInContext('__lcPinNamePlan("to92",null,null,3).__lcFrom', sandbox) === 'preset',
+  '预设来源标记为 preset（3D 据此用黄色）');
+assert(vm.runInContext('__lcPinNamePlan("to92",null,"CBE",3).__lcFrom', sandbox) === 'manual',
+  '手选来源标记为 manual（3D 用白色）');
+assert(vm.runInContext('__lcPinNamePlan("resistor",null,null,2).__lcFrom', sandbox) === 'number',
+  '非三极管标记为 number');
+assert(vm.runInContext('__lcPinNamePlan("to92",{1:{name:"E"},2:{name:"B"},3:{name:"C"}},null,3).__lcFrom', sandbox) === 'pinInfo',
+  '网表来源标记为 pinInfo');
 
 // 5) 非三极管类型不受影响
 assert(eq(plan('resistor', null, 'EBC', 2), ['1', '2']), '电阻不套用三极管脚序');
@@ -112,6 +126,11 @@ assert(bundle.indexOf('led:i=>UP(i.color??15220543,hn(i),i.pinNames)') >= 0, 'le
     k + ' 分派也把 pinNames 传进 ' + fn);
 });
 assert(bundle.indexOf('function __lcPinLetters(') >= 0, '存在统一的引脚字母标注辅助函数');
+assert(bundle.indexOf('function __lcPinInk(names)') >= 0, '存在按来源取色的辅助函数');
+assert(bundle.indexOf('var __lcPresetInk = 16762967') >= 0, '预设色是暖黄 0xFFC857');
+assert((bundle.match(/color:__lcPinInk\(names\)/g) || []).length === 4,
+  'TO-220 / TO-39 / TO-3 / TO-247 都按来源上色');
+assert(bundle.indexOf('nmc=__lcPinInk(names)') >= 0, 'TO-92 也按来源上色');
 ['function FP(i,t,names)', 'function zP(i,t,names)', 'function tR(i,t,names)', 'function eR(i,t,names)']
   .forEach(sig => assert(bundle.indexOf(sig) >= 0, '接受 pinNames：' + sig.slice(9, 13)));
 assert(bundle.indexOf('pinNames:__lcPinNamesOf(c)') >= 0, 'C2 在构建元件时计算 pinNames');
@@ -129,6 +148,7 @@ vm.runInContext(
   grabDecl(bundle, '__lcTriKinds') +
   grabDecl(bundle, '__lcPinOrderPresets') +
   grabFn(bundle, 'function __lcPinOrderOf(') +
+  grabFn(bundle, 'function __lcPinPlanTag(') +
   grabFn(bundle, 'function __lcPinNamePlan(') +
   grabFn(bundle, 'function __lcPinNamesOf(') +
   grabFn(bundle, 'function __lcTriPinTable('),
@@ -144,7 +164,8 @@ const t2 = table({ kind: 'to220', pinOrder: 'CBE', pinOffsets: [[-1, 0], [0, 0],
 assert(t2.indexOf('脚1 C') >= 0 && t2.indexOf('脚3 E') >= 0, 'TO-220 换成 CBE 后对照行跟着变（' + t2 + '）');
 
 const t3 = table({ kind: 'to92', pinOffsets: [[-1, 0], [0, 0], [1, 0]] });
-assert(t3.indexOf('脚1 1') >= 0 && t3.indexOf('未指定脚序') >= 0, '未指定脚序时明确提示（' + t3 + '）');
+assert(t3.indexOf('脚1 E') >= 0 && t3.indexOf('未指定脚序') >= 0 && t3.indexOf('黄色') >= 0,
+  '未指定脚序时按常见排布显示、并说明是暂标（' + t3 + '）');
 
 assert(table({ kind: 'to92', pinOffsets: [] }).indexOf('没有引脚信息') >= 0, '无引脚时不抛异常');
 assert(table(null).indexOf('没有引脚信息') >= 0, '传 null 也不抛异常');
