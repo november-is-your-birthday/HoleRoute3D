@@ -662,6 +662,103 @@ function __lcDrcPanelV2(props) {
   });
 }
 
+/* ------------------------------------------------------------------
+ * 五、板尺寸输入框：编辑草稿 + 提交生效
+ *
+ * 原实现把每个按键直接写进工程（onChange → onUpdateBoard）。想把 57 改成 28，
+ * 删掉「7」的瞬间板宽就被提交成 5：整块板缩到 5 列、3D 场景重建、组件按新板宽重排，
+ * 输入框还会被重渲染打断，后面的「28」根本输不进去。板高同理。
+ *
+ * 现在输入期间只改本地草稿文本，真正的落盘只发生在三个时机：
+ *   失焦、回车、上下键步进（上下键仍保持「按一次改一格」的旧手感）。
+ * Esc 放弃本次编辑。空值 / 非数字恢复成工程里的当前值，
+ * 越界值按 [min,max] 夹紧后再提交，与原来的 Jp() 行为一致。
+ *
+ * 另外聚焦时全选：要把 57 改成 28，点进去直接敲 28 就是替换整值，
+ * 不必先删一遍 —— 否则「删掉 7 → 敲 28」会拼成 528 再被夹成上限。
+ * ------------------------------------------------------------------ */
+function __lcBoardSizeField(props) {
+  var stTxt = qt.useState(String(props.value));
+  var txt = stTxt[0];
+  var setTxt = stTxt[1];
+  var stFocus = qt.useState(false);
+  var focused = stFocus[0];
+  var setFocused = stFocus[1];
+  /* Esc 之后文本要回到工程值，但 blur 本身还会再触发一次提交 —— 用 ref 记住这次是「放弃」 */
+  var refCancel = qt.useRef(false);
+  var cur = String(props.value);
+
+  /* 工程值被外部改动（撤销、四周增删行列按钮）时同步显示；
+     正在编辑时不覆盖，否则会把用户刚敲的字擦掉。 */
+  qt.useEffect(function () {
+    if (!focused) setTxt(cur);
+  }, [cur, focused]);
+
+  function clampNum(n) {
+    return Math.max(props.min, Math.min(props.max, Math.round(n)));
+  }
+
+  function commit() {
+    var raw = String(txt).trim();
+    if (raw === "") { setTxt(cur); return; }
+    var n = Number(raw);
+    if (!isFinite(n)) { setTxt(cur); return; }
+    n = clampNum(n);
+    setTxt(String(n));
+    if (n !== props.value) props.onCommit(n);
+  }
+
+  function step(delta) {
+    var raw = String(txt).trim();
+    var base = Number(raw);
+    if (raw === "" || !isFinite(base)) base = props.value;
+    var n = clampNum(base + delta);
+    setTxt(String(n));
+    if (n !== props.value) props.onCommit(n);
+  }
+
+  return P.jsxs("label", {
+    className: "board-size-control",
+    children: [
+      P.jsx("span", { children: props.label }),
+      P.jsx("input", {
+        type: "number",
+        min: props.min,
+        max: props.max,
+        value: txt,
+        disabled: props.disabled,
+        title: props.title,
+        onFocus: function (e) {
+          setFocused(true);
+          /* 全选：点击 / Tab 进来后直接敲数字就是替换整值，和改表格单元格一致 */
+          if (e && e.target && e.target.select) e.target.select();
+        },
+        onBlur: function () {
+          setFocused(false);
+          if (refCancel.current) { refCancel.current = false; setTxt(cur); return; }
+          commit();
+        },
+        onChange: function (e) { setTxt(e.target.value); },
+        onKeyDown: function (e) {
+          /* 回车只提交、不夺焦点：回车后再主动 blur 会触发第二次 onBlur，
+             而此时 props.value 还没随状态更新，会重复提交同一个尺寸。 */
+          if (e.key === "Enter") { e.preventDefault(); commit(); return; }
+          if (e.key === "Escape") {
+            refCancel.current = true;
+            setTxt(cur);
+            e.currentTarget.blur();
+            return;
+          }
+          if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+            e.preventDefault();
+            step(e.key === "ArrowUp" ? 1 : -1);
+          }
+        }
+      })
+    ]
+  });
+}
+
 window.__lcBoardGrow = __lcBoardGrow;
 window.__lcDrcGo = __lcDrcGo;
 window.__lcDrcClearMark = __lcDrcClearMark;

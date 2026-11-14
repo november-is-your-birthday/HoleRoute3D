@@ -885,6 +885,43 @@ _b = src.index('function __lcColorPanel(', _a)
 src = src[:_a] + 'function __lcDrcPanel(i){return __lcDrcPanelV2(i)}' + src[_b:]
 print('  ok W1 drc panel delegates to locatable version')
 
+# =================================================================
+# v3.4.7
+# 1) 板宽 / 板高输入框改成「编辑草稿 + 提交生效」
+#    原串 onChange 直接把每个按键写进工程：57 改 28 时删掉 7 就提交成 5，
+#    板子立刻缩到 5 列、场景重建，后面的数字输不进去。
+#    换成 __lcBoardSizeField（见 patch_v34_main.js），失焦 / 回车才落盘。
+# =================================================================
+src = rep(src,
+          'P.jsxs("label",{className:"board-size-control",children:[P.jsx("span",{children:"W"}),'
+          'P.jsx("input",{type:"number",min:5,max:150,value:i.width,disabled:!O.capabilities.canResizeWidth,'
+          'title:O.capabilities.canResizeWidth?void 0:"板宽由板定义决定",'
+          'onChange:K=>S({...i,width:Jp(K.target.value)})})]}),'
+          'P.jsxs("label",{className:"board-size-control",children:[P.jsx("span",{children:"H"}),'
+          'P.jsx("input",{type:"number",min:5,max:150,value:i.height,'
+          'onChange:K=>S(i.kind==="breadboard"?M0(Jp(K.target.value),i.breadboard?.modules??1):{...i,height:Jp(K.target.value)})})]})',
+          'P.jsx(__lcBoardSizeField,{label:"W",value:i.width,min:5,max:150,'
+          'disabled:!O.capabilities.canResizeWidth,'
+          'title:O.capabilities.canResizeWidth?void 0:"板宽由板定义决定",'
+          'onCommit:K=>S({...i,width:K})}),'
+          'P.jsx(__lcBoardSizeField,{label:"H",value:i.height,min:5,max:150,'
+          'onCommit:K=>S(i.kind==="breadboard"?M0(K,i.breadboard?.modules??1):{...i,height:K})})',
+          'X1 board size fields commit on blur')
+
+# 2) 工具栏：删掉「透视」按钮（与飞线并排、容易被误当成走线相关），
+#    「飞线」改名「飞线层」。透视仍可从右上角图标或快捷键 T 切换。
+src = rep(src,
+          'P.jsxs(Hl,{label:"",openMenu:h,onOpenMenu:d,children:['
+          'P.jsx($n,{active:__lcRats,"aria-label":"飞线层（背面视角显示）",'
+          'onClick:()=>__lcSetRats(__lcRatsToggle()),children:"飞线"}),'
+          'P.jsx($n,{active:v,"aria-label":"透视板体，快捷键 T",'
+          'title:"透视板体：透过板体查看背面走线（快捷键 T）",onClick:w,children:"透视"})]})',
+          'P.jsxs(Hl,{label:"",openMenu:h,onOpenMenu:d,children:['
+          'P.jsx($n,{active:__lcRats,"aria-label":"飞线层（背面视角显示）",'
+          'title:"飞线层：显示尚未连通网络的飞线（背面视角下可见）",'
+          'onClick:()=>__lcSetRats(__lcRatsToggle()),children:"飞线层"})]})',
+          'X2 toolbar drops transparency button, renames ratsnest')
+
 if CHECK_ONLY:
     print('check only, not written')
     raise SystemExit(0)
