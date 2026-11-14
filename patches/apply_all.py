@@ -924,6 +924,25 @@ src = rep(src,
           'onClick:()=>__lcSetRats(__lcRatsToggle()),children:"飞线层"})]})',
           'X2 toolbar drops transparency button, renames ratsnest')
 
+# =================================================================
+# v3.4.9：内测版标识（三处常驻 + 一次启动提示，提示与样式在 patch_v33_main.js 末尾）
+# 背景：这个 fork 是在上游压缩包上打补丁改的，用户拿去做板之前必须知道
+#       「软件可能是错的」，否则出了问题会先怀疑自己。
+# =================================================================
+src = rep(src,
+          'P.jsx("div",{className:"brand-title",children:"ProtoRoute 3D"})',
+          'P.jsxs("div",{className:"brand-title",children:["ProtoRoute 3D",'
+          'P.jsx("span",{className:"lc-beta-badge",'
+          'title:"内测版：功能仍在打磨，可能存在缺陷。关键工程请先导出 JSON 备份",'
+          'children:"内测版"})]})',
+          'Y1 header beta badge')
+src = rep(src,
+          'P.jsx("p",{children:"创建工程后导入 KiCad 网表（.net），随后进入洞洞板布局与布线流程。"})',
+          'P.jsx("p",{children:"创建工程后导入 KiCad 网表（.net），随后进入洞洞板布局与布线流程。"}),'
+          'P.jsx("p",{style:{color:"#d9534f",fontWeight:600,marginTop:"6px"},'
+          'children:"内测版：功能仍在打磨，可能存在缺陷。重要工程请随时导出 JSON 备份。"})',
+          'Y2 empty workspace beta notice')
+
 if CHECK_ONLY:
     print('check only, not written')
     raise SystemExit(0)

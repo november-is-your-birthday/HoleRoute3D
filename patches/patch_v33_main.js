@@ -306,3 +306,25 @@ document.addEventListener("keydown", function (ev) {
 
 /* 调试 / 自动化测试入口（与既有的 window.__lcScene / __lcProject 一致） */
 window.__lcPickJumper = __lcPickJumper;
+
+/* ------------------------------------------------------------------
+ * v3.4.9：内测版标识
+ * 这个 fork 是在上游 2.0.0 的压缩包上打补丁改出来的，功能没有经过完整验证，
+ * 用户拿去焊板之前必须知道「软件可能是错的」。三处常驻 + 一次启动提示：
+ *   1) 顶栏品牌名后面一枚红色「内测版」标签（见 apply_all.py Y1）
+ *   2) 窗口标题带「内测版」（src/dist/index.html）
+ *   3) 没有工程时的空面板上加一行红字
+ *   4) 每次启动弹一条提示条 —— 提醒先导出工程留档再反馈
+ * ------------------------------------------------------------------ */
+__lcStyleOnce("lc-beta-style",
+  ".lc-beta-badge{display:inline-block;margin-left:8px;padding:0 6px;border-radius:8px;" +
+  "background:#c0392b;color:#fff;font-size:10px;font-weight:700;line-height:16px;" +
+  "letter-spacing:.5px;vertical-align:middle;white-space:nowrap;" +
+  "box-shadow:0 0 0 1px rgba(255,255,255,.22) inset}");
+
+setTimeout(function () {
+  try {
+    if (!document.body) return;
+    __lcToast("内测版：本软件仍在打磨，可能存在缺陷。遇到异常请先用「导出工程 JSON」留档再反馈。", 6000);
+  } catch (e) {}
+}, 1800);
