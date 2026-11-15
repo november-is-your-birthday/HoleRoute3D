@@ -808,7 +808,13 @@ var __lcPkgTitles = {
 /* 从封装名 / 型号里认封装族。取多个字段拼起来，因为立创的
  * FOOTPRINT 是 "S8050_SOT-23"、Device 是 "S8050_SOT_NPN"，
  * 而组件本身只留了 kind/label/name/value —— 封装名要靠 importState 补。
- * 老工程连 importState 里的封装也是空的（当时没解析），只剩 value 可依据。 */
+ *
+ * 关键边界：只写 "SOT" 的库型号不能当成 SOT-23。
+ * 例：S8050_SOT_NPN 是立创符号库里常见的三极管 part 名，它只说明
+ * 「SOT 类封装 + NPN」，并没有写出脚距/脚数；实际器件完全可能是 TO-92。
+ * 老工程又恰好没有 FOOTPRINT 字段，如果在这里兜底成 SOT-23，就会把
+ * TO-92 的 1=E 2=B 3=C 标成 1=B 2=E 3=C。现在这类含糊名称不参与封装判定，
+ * 交给当前 3D 外形（kind）兜底。 */
 function __lcPkgText(c) {
   if (!c) return "";
   var keys = ["footprint", "packageName", "value", "package", "pkg", "device", "footprintName"];
@@ -843,13 +849,11 @@ function __lcPkgFamily(c) {
   if (/TO[-_ ]?247/.test(s)) return "to247";
   if (/TO[-_ ]?220/.test(s)) return "to220";
   if (/TO[-_ ]?3(\b|[^0-9])/.test(s)) return "to3";
-  /* 贴片：先认带数字的具体封装，再兜底 SOT */
+  /* 贴片：必须是带型号的明确封装才认；裸 "SOT" 不猜 */
   if (/SOT[-_ ]?223/.test(s)) return "sot223";
   if (/SOT[-_ ]?89/.test(s)) return "sot89";
   if (/TO[-_ ]?252|D2?PAK/.test(s)) return "to252";
   if (/SOT[-_ ]?23|SC[-_ ]?70|SOT[-_ ]?323|SOT[-_ ]?523|TSOT/.test(s)) return "sot23";
-  /* 只写了 SOT 没写型号（立创 Device 常为 XXX_SOT_NPN）→ 按最常见的 SOT-23 */
-  if (/SOT/.test(s)) return "sot23";
   return "";
 }
 /* 手选脚序就是「逐脚角色」：EBC 表示脚1=E、脚2=B、脚3=C。
@@ -995,7 +999,8 @@ function __lcTriPinTable(c) {
     var key = __lcPinOrderOf(c.pinOrder);
     if (!key) {
       if (rec) {
-        var who = pkg ? (__lcPkgTitles[pkg] || pkg) : "本封装";
+        var who = pkg ? (__lcPkgTitles[pkg] || pkg)
+          : (__lcPkgTitles[c.kind] || "当前外形");
         txt += "　（未指定脚序，按 " + who + " 常见排布 " + rec.split("").join("-") +
           " 暂标，黄色；与实物不符就在上面换一种）";
       } else {

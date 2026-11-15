@@ -59,8 +59,15 @@ const assert = (cond, msg) => { res.push((cond ? 'PASS ' : 'FAIL ') + msg); if (
 const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
 /* ---------- 1) 封装族识别 ---------- */
-assert(fam({ value: 'S8050_SOT_NPN' }) === 'sot23',
-  '立创 Device 名 S8050_SOT_NPN → sot23（老工程只留了 value）');
+assert(fam({ value: 'S8050_SOT_NPN' }) === '',
+  '裸 S8050_SOT_NPN 不猜 SOT-23（只是符号库 part 名，没写具体封装）');
+assert(fam({ value: 'S8050_SOT_NPN', footprint: 'S8050_SOT-23' }) === 'sot23',
+  '同型号带明确 FOOTPRINT S8050_SOT-23 → sot23');
+assert(fam({ value: 'S8050_SOT_NPN', packageName: 'SOT-23-3_L2.9-W1.3-P1.90-LS2.4' }) === 'sot23',
+  '同型号带明确 packageName → sot23');
+assert(fam({ value: 'S8050_SOT_NPN', footprint: 'TO-92-3' }) === 'to92',
+  '同型号明确封装是 TO-92 → to92');
+assert(fam({ value: 'S8050_SOT-23' }) === 'sot23', 'value 里写出完整 SOT-23 仍可识别');
 assert(fam({ footprint: 'S8050_SOT-23' }) === 'sot23', 'FOOTPRINT S8050_SOT-23 → sot23');
 assert(fam({ footprint: 'SOT-23-3P_L2.9-W1.3-H1.0-LS2.4-P0.95' }) === 'sot23',
   '立创 3D Model Title 里的 SOT-23-3P 也能认（含 -3P 后缀）');
@@ -105,17 +112,30 @@ assert(eq(plan('to92', { 1: { name: 'A' }, 2: { name: 'K' } }, null, 2, 'sot23')
   '两脚元件即使封装含 SOT 也走网表名');
 
 /* ---------- 5) 属性面板文案 ---------- */
+/* 用户真实工程：库型号含 SOT，但没有 Footprint，3D 是 TO-92 外形。
+   不能再从 value 猜 SOT-23，应按可见外形给 1=E 2=B 3=C。 */
 const cQ1 = {
   kind: 'to92', label: 'Q', name: 'Q1', value: 'S8050_SOT_NPN', pinCount: 3,
   pinOffsets: [[-1, 0], [0, 0], [1, 0]], pinOrder: undefined
 };
 sandbox.window.__lcProject = { importState: { pinInfo: { Q1: synth } } };
 const txt = R('__lcTriPinTable(' + JSON.stringify(cQ1) + ')');
-assert(txt.indexOf('封装 SOT-23') >= 0, '面板标出识别到的封装（' + txt + '）');
-assert(txt.indexOf('脚1 B') >= 0 && txt.indexOf('脚2 E') >= 0 && txt.indexOf('脚3 C') >= 0,
-  '面板对照行按 SOT-23 给 B/E/C（' + txt + '）');
-assert(txt.indexOf('SOT-23 常见排布 B-E-C') >= 0, '面板说明这是 SOT-23 的常见排布、属暂标');
+assert(txt.indexOf('封装 SOT-23') < 0, '没有明确 Footprint 时不再冒充 SOT-23（' + txt + '）');
+assert(txt.indexOf('脚1 E') >= 0 && txt.indexOf('脚2 B') >= 0 && txt.indexOf('脚3 C') >= 0,
+  '按实际 TO-92 外形给 E/B/C（' + txt + '）');
+assert(txt.indexOf('TO-92 常见排布 E-B-C') >= 0, '面板说明这是 TO-92 的常见排布、属暂标');
 assert(txt.indexOf('黄色') >= 0, '面板说明黄色 = 暂标');
+const names = R('__lcPinNamesOf(' + JSON.stringify(cQ1) + ')');
+assert(eq(names.slice(0, 3), ['E', 'B', 'C']),
+  '3D 字母在脚 1/2/3 上依次为 E/B/C，与用户确认的当前位置一致（' + JSON.stringify(names) + '）');
+
+/* 明确写了 SOT-23 的工程仍按 SOT-23 的 B/E/C */
+const cSot = Object.assign({}, cQ1, { footprint: 'S8050_SOT-23' });
+sandbox.window.__lcProject = { importState: { pinInfo: { Q1: synth } } };
+const txtSot = R('__lcTriPinTable(' + JSON.stringify(cSot) + ')');
+assert(txtSot.indexOf('封装 SOT-23') >= 0, '明确 Footprint 为 SOT-23 时面板标出该封装');
+assert(txtSot.indexOf('脚1 B') >= 0 && txtSot.indexOf('脚2 E') >= 0,
+  '明确 SOT-23 时仍按 B/E/C（' + txtSot + '）');
 
 const cTO92 = { kind: 'to92', name: 'Q2', value: 'S8050_TO-92', pinCount: 3, pinOffsets: [[-1, 0], [0, 0], [1, 0]] };
 sandbox.window.__lcProject = { importState: { pinInfo: { Q2: synth } } };
@@ -127,6 +147,8 @@ assert(txt2.indexOf('脚1 E') >= 0 && txt2.indexOf('脚2 B') >= 0,
 assert(bundle.indexOf('var __lcPkgPresets = {') >= 0, '存在封装预设表');
 assert(/sot23:\s*"BEC"/.test(bundle), 'SOT-23 预设为 BEC');
 assert(bundle.indexOf('function __lcPkgFamily(c)') >= 0, '存在封装族识别函数');
+assert(bundle.indexOf('if (/SOT/.test(s))') < 0,
+  '已移除「裸 SOT 一律当 SOT-23」的兜底（S8050_SOT_NPN 型库名会误判）');
 assert(bundle.indexOf('footprint:String(c.footprint||c.packageName||"")') >= 0,
   '导入时把认到的封装也写进组件（footprint 或 packageName）');
 assert(bundle.indexOf('(fields (field (name "Footprint") "\' + __lcEsc(c.footprint) + \'"))') >= 0,
@@ -145,14 +167,14 @@ if (fs.existsSync(v1Path)) {
   const q = pj && (pj.components || []).find(x => x.name === 'Q1');
   if (q) {
     sandbox.window.__lcProject = pj;
-    assert(fam(q) === 'sot23', 'v1.json 的 Q1 被认出是 SOT-23（value=' + q.value + '）');
+    assert(fam(q) === '', 'v1.json 的 Q1 没有明确封装，不能靠 value 里的 SOT 猜（value=' + q.value + '）');
     const got = R('__lcPinNamesOf(' + JSON.stringify(q) + ')');
-    assert(eq(got.slice(0, 3), ['B', 'E', 'C']),
-      'v1.json 的 Q1 三只脚依次是 B/E/C（实际 ' + JSON.stringify(got) + '）');
+    assert(eq(got.slice(0, 3), ['E', 'B', 'C']),
+      'v1.json 的 Q1 三只脚依次是 E/B/C（实际 ' + JSON.stringify(got) + '）');
     assert(R('__lcPinInk(__lcPinNamesOf(' + JSON.stringify(q) + '))') === 16762967,
       '仍按「暂标」用暖黄色，没冒充网表给的名字');
-    /* 与网表交叉验证：Q1-3 接 +5V（集电极）、Q1-1 在基极分压网（R3/C2/SW1）、
-       Q1-2 经 R1 出到定时网络（发射极）。 */
+    /* 网表只提供脚号，不能单凭连通关系证明 B/E。Q1 的 3D 外形明确是 TO-92，
+       用户按实物位置确认：脚1=E、脚2=B、脚3=C；Q1-3 接 +5V 为 C。 */
     const nets = (pj.importState && pj.importState.nets) || pj.nets || [];
     const netOf = (pin) => {
       for (const n of nets) for (const nd of (n.nodes || [])) {
@@ -161,11 +183,9 @@ if (fs.existsSync(v1Path)) {
       return null;
     };
     assert(netOf('3') === '+5V', 'Q1-3 在网表里接 +5V（' + netOf('3') + '）');
-    assert(got[2] === 'C', 'Q1-3 接 +5V → 应为集电极 C（实际 ' + got[2] + '）');
-    const n1 = netOf('1') || '';
-    assert(n1.indexOf('$1N5') >= 0, 'Q1-1 落在基极分压网 $1N5（' + n1 + '）');
-    assert(got[0] === 'B', 'Q1-1 接基极分压（R3/C2/SW1）→ 应为 B（实际 ' + got[0] + '）');
-    assert(got[1] === 'E', 'Q1-2 经 R1 出到定时网络 → 应为 E（实际 ' + got[1] + '）');
+    assert(got[2] === 'C', 'Q1-3 接 +5V → 集电极 C（实际 ' + got[2] + '）');
+    assert(got[0] === 'E', 'Q1-1 按实物位置为 E（实际 ' + got[0] + '）');
+    assert(got[1] === 'B', 'Q1-2 按实物位置为 B（实际 ' + got[1] + '）');
   } else {
     res.push('SKIP v1.json 里没有 Q1');
   }
