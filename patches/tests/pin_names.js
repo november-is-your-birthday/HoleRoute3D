@@ -32,6 +32,7 @@ vm.createContext(sandbox);
 vm.runInContext(
   grabDecl(bundle, '__lcTriKinds') +
   grabDecl(bundle, '__lcPinOrderPresets') +
+  grabDecl(bundle, '__lcPkgPresets') +
   grabFn(bundle, 'function __lcPinOrderOf(') +
   grabFn(bundle, 'function __lcPinPlanTag(') +
   grabFn(bundle, 'function __lcPinNamePlan('),
@@ -165,6 +166,10 @@ vm.createContext(tBox);
 vm.runInContext(
   grabDecl(bundle, '__lcTriKinds') +
   grabDecl(bundle, '__lcPinOrderPresets') +
+  grabDecl(bundle, '__lcPkgPresets') +
+  grabDecl(bundle, '__lcPkgTitles') +
+  grabFn(bundle, 'function __lcPkgText(') +
+  grabFn(bundle, 'function __lcPkgFamily(') +
   grabFn(bundle, 'function __lcPinOrderOf(') +
   grabFn(bundle, 'function __lcPinPlanTag(') +
   grabFn(bundle, 'function __lcPinNamePlan(') +

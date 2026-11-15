@@ -2,7 +2,7 @@
   <img src="src/assets/image1.png" width="120" alt="HoleRoute3D">
 </p>
 
-<h1 align="center">洞洞板布线 <sub>HoleRoute3D v3.0</sub></h1>
+<h1 align="center">洞洞板布线 <sub>HoleRoute3D v3.5.0</sub></h1>
 
 <p align="center">
   <b>洞洞板 / 万能板的 3D 元件摆放 · 自动布线 · 焊接前检查</b><br>
@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/november-is-your-birthday/HoleRoute3D/releases/latest"><img alt="download" src="https://img.shields.io/badge/download-v3.4.13-2ea043?style=for-the-badge"></a>
+  <a href="https://github.com/november-is-your-birthday/HoleRoute3D/releases/latest"><img alt="download" src="https://img.shields.io/badge/download-v3.5.0-2ea043?style=for-the-badge"></a>
   <img alt="platform" src="https://img.shields.io/badge/platform-Windows%20x64-0078D4">
   <img alt="base" src="https://img.shields.io/badge/upstream-v2.0.0-6b7280">
 </p>
@@ -59,7 +59,8 @@
 
 顶部即本版改造后的常驻工具栏：`生成元件 · 自动放置 · 自动布线 · 继续布线` /
 `选择 · 走锡 · 跳线 · 删线 · 清除布线` / `DRC 检查 · 清除DRC标记` / `飞线 · 元件库`；
-右上角是刷新、透视、主题、撤销、导出工程、清空、设置；左侧栏依次为工程、导入、DRC 检查、导入结果。
+右上角最醒目的是黄色 `新手教程 F1`，其后是刷新、透视、主题、撤销、导出工程、清空、设置；
+左侧栏依次为工程、导入、DRC 检查、导入结果。
 
 ---
 
@@ -101,14 +102,14 @@
 ### 2.1 普通用户：下载 Release，解压即用（推荐）
 
 1. 打开 **[Releases](https://github.com/november-is-your-birthday/HoleRoute3D/releases/latest)** 页面；
-2. 下载 `ProtoRoute3D-v3.4.13-cn-win-x64.zip`（约 130 MB）；
+2. 下载 `ProtoRoute3D-v3.5.0-cn-win-x64.zip`（约 130 MB）；
 3. **完整解压**到任意目录，例如 `D:\HoleRoute3D`；
 4. 双击其中的 `ProtoRoute 3D.exe`。
 
 包里已经带了完整的 Electron 运行时、依赖和打好补丁的 `app.asar`，
 **不需要安装 Python / Node，也不需要再下载上游版本打补丁**。
 
-- 窗口标题显示 **ProtoRoute 3D v3.4.13 内测版** 就说明版本正确（程序文件与 exe 名沿用上游内部命名，
+- 窗口标题显示 **ProtoRoute 3D v3.5.0 内测版** 就说明版本正确（程序文件与 exe 名沿用上游内部命名，
   项目名以「洞洞板布线 HoleRoute3D」为准）；
 - 首次运行 Windows 可能弹「已保护你的电脑」，点「更多信息 → 仍要运行」即可（本版没有代码签名）；
 - 解压目录里有一份 `使用说明.txt`，包含嘉立创导出步骤、基本流程与快捷键。
@@ -140,7 +141,7 @@ python build_asar.py           # 正式打包，旧包自动备份为 app.asar.p
 
 ```bash
 python tools/make_release.py --check   # 统计会打包哪些文件
-python tools/make_release.py           # 生成 release/ProtoRoute3D-v3.4.13-cn-win-x64.zip
+python tools/make_release.py           # 生成 release/ProtoRoute3D-v3.5.0-cn-win-x64.zip
 ```
 
 脚本只收运行本体（exe / dll / pak / locales / resources/app.asar 等）+ `docs/使用说明.txt`，
@@ -177,10 +178,11 @@ python tools/make_release.py           # 生成 release/ProtoRoute3D-v3.4.13-cn-
 
 窗口变窄时，方框区域右侧会出现 `‹` `›` 箭头，点击横向滚动。
 
-### 3.2 右上角图标区
+### 3.2 右上角教程与图标区
 
-| 图标 | 作用 |
+| 按钮 / 图标 | 作用 |
 |---|---|
+| **新手教程**（黄色，`F1`） | 打开 7 章内置教程，覆盖快速上手、网表导入、元件摆放、布线检查、引脚极性、保存施工、快捷键排错；未新建工程时也可查看 |
 | **刷新** | 重建 3D 场景（视图异常时用） |
 | **透视** | 板体半透明，方便看背面的走锡 |
 | **深色 / 浅色** | 切换界面主题 |
@@ -194,7 +196,7 @@ python tools/make_release.py           # 生成 release/ProtoRoute3D-v3.4.13-cn-
 | 区块 | 内容 |
 |---|---|
 | **工程** | 工程名称、板型（洞洞板 / 面包板）、板子尺寸、新建 / 打开 |
-| **导入** | 网表拖放区（`.net` / `.txt`），以及已导入文件列表 |
+| **导入** | 网表拖放区（嘉立创 `.enet`、Protel / KiCad `.net`、Multisim `.txt` / `.csv`），以及已导入文件列表 |
 | **DRC 检查** | 错误 / 警告数量与明细，每条标出**孔位 + 涉事引脚**，点一下相机就跳过去（跑过 DRC 后才出现内容） |
 | **AI 约束** | 自然语言指令解析出的放置 / 布线约束，分**硬约束 / 软约束**，需手动「确认添加」，之后可禁用或删除 |
 | **导入结果** | 元件、网络、引脚网络三张表，默认收起，点「展开 (n)」查看 |
@@ -223,6 +225,8 @@ python tools/make_release.py           # 生成 release/ProtoRoute3D-v3.4.13-cn-
 ---
 
 ## 4. 完整使用流程
+
+> 第一次使用建议先按 `F1`（或点顶部黄色「新手教程」）看一遍内置教程，再按下面步骤操作。
 
 ### 4.1 新建工程
 
@@ -465,7 +469,7 @@ TO-220 绝大多数是 B-C-E，TO-3 是 B-E-C（外壳为 C）。所以软件不
 | **自动布线** | 5 轮 + 有限拆线重布 | 增加 **pull-tight 后优化**（逐段拆开重布，更优才保留）→ 拐弯 −2~3 |
 | **继续布线** | 无此功能；「自动布线」会重算全部网络，上一轮结果被覆盖 | 新增「继续布线」：保留全部已有走锡/跳线，只补未连通网络，并按全量引脚重算 DRC |
 | **工程工具** | 无 | `build_asar.py` 打包脚本、`harness/` 离线回归（基准/消融/独立校验/飞线回归）、GitHub Actions |
-| **分发形态** | 只有源码仓库，用户需自行构建；无现成安装包 | 提供 **v3.4.13 免安装压缩包**（含 Electron 运行时），下载解压双击即用 |
+| **分发形态** | 只有源码仓库，用户需自行构建；无现成安装包 | 提供 **v3.5.0 免安装压缩包**（含 Electron 运行时），下载解压双击即用 |
 | **文档** | 一份 README | README + CHANGELOG + NOTICE + 使用说明.txt + Release 说明 |
 
 ### 5.2 我没有改的部分
@@ -514,6 +518,7 @@ TO-220 绝大多数是 B-C-E，TO-3 是 B-E-C（外壳为 C）。所以软件不
 | 删除所选 | `Delete` | 生成元件 | `G` |
 | 自动放置 | `P` | 自动布线 | `A` |
 | 运行 DRC | `D` | 清除 DRC 标记 | `C` |
+| 新手教程 | `F1` | 关闭教程 / 取消操作 | `Esc` |
 | 走锡模式 | `S` | 跳线模式 | `J` |
 | 删线模式 | `E` | 拖动元件 | 按住 `Shift` |
 
@@ -592,7 +597,7 @@ tools/restore_official.bat              还原官方原版
 harness/                                离线回归（Node 运行，不需要启动 GUI）
 .github/workflows/verify.yml            CI：语法检查 + 快速回归
 docs/使用说明.txt                        随发布包分发给最终用户的上手说明
-docs/release-v3.4.13.md                 GitHub Release 页面文案（历史：release-v3.4.12.md、release-v3.4.11.md、release-v3.4.10.md、release-v3.4.9.md、release-v3.4.8.md、release-v3.4.7.md、release-v3.4.6.md、release-v3.4.5.md、release-v3.4.4.md、release-v3.4.3.md、release-v3.4.2.md、release-v3.4.1.md、release-v3.4.0.md、release-v3.3.2.md、release-v3.3.1.md、release-v3.3.0.md、release-v3.2.5.md、release-v3.0.0.md）
+docs/release-v3.5.0.md                 GitHub Release 页面文案（历史：release-v3.4.13.md、release-v3.4.12.md、release-v3.4.11.md、release-v3.4.10.md、release-v3.4.9.md、release-v3.4.8.md、release-v3.4.7.md、release-v3.4.6.md、release-v3.4.5.md、release-v3.4.4.md、release-v3.4.3.md、release-v3.4.2.md、release-v3.4.1.md、release-v3.4.0.md、release-v3.3.2.md、release-v3.3.1.md、release-v3.3.0.md、release-v3.2.5.md、release-v3.0.0.md）
 docs/screenshots/                       README 用的界面截图
 ```
 

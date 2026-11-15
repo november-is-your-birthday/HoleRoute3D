@@ -15,6 +15,7 @@ P31 = os.path.join(HERE, 'patch_v31_main.js')
 P32 = os.path.join(HERE, 'patch_multisim.js')
 P33 = os.path.join(HERE, 'patch_v33_main.js')
 P34 = os.path.join(HERE, 'patch_v34_main.js')
+P35 = os.path.join(HERE, 'patch_v35_main.js')
 CHECK_ONLY = '--check' in sys.argv
 # 排障用：LC_SKIP="U4,U9" 可临时跳过指定补丁（不改变最终产物以外的任何行为）
 SKIP = set(x for x in os.environ.get('LC_SKIP', '').split(',') if x)
@@ -59,6 +60,7 @@ p31 = io.open(P31, encoding='utf-8').read().strip()
 p32 = io.open(P32, encoding='utf-8').read().strip()
 p33 = io.open(P33, encoding='utf-8').read().strip()
 p34 = io.open(P34, encoding='utf-8').read().strip()
+p35 = io.open(P35, encoding='utf-8').read().strip()
 
 print('== v3.1 structural patches ==')
 src = rep(src, 'v0=Wf("dip","dip_switch","seven_segment_display","alphanumeric_display")',
@@ -1072,6 +1074,48 @@ src = rep(src, '''    try{
 src = rep(src, 'title:"网表 / Multisim 报告",accept:".net,.txt,.csv,.cir"',
           'title:"网表 / Multisim 报告 / .enet",accept:".net,.enet,.json,.txt,.csv,.cir"',
           'Y7 accept .enet in file picker')
+
+# =================================================================
+# v3.5.0：常驻黄色新手教程 + 小范围界面优化
+# 不改变主面板结构；教程挂在 app-shell 内，因此没有工程时也能查看。
+# =================================================================
+print('== v3.5 guide and UI polish ==')
+src = rep(src, 'var __lcThumbCache={}', p35 + '\nvar __lcThumbCache={}',
+          'G1 inject guide and UI polish')
+
+# 顶栏工程操作区最前面放入口。它不参与中间工具栏的横向滚动，窄窗口也能找到。
+src = rep(src,
+          'P.jsxs("nav",{className:"header-actions","aria-label":"工程操作",children:['
+          'P.jsxs("select",{className:"project-action-select"',
+          'P.jsxs("nav",{className:"header-actions","aria-label":"工程操作",children:['
+          'P.jsxs("button",{className:"lc-guide-button",type:"button",'
+          'title:"新手教程：从导入网表到布线检查（快捷键 F1）",'
+          '"aria-label":"打开新手教程，快捷键 F1",'
+          'onClick:()=>window.__lcOpenGuide&&window.__lcOpenGuide(),children:['
+          'P.jsx("span",{className:"lc-guide-button-mark","aria-hidden":"true",children:"?"}),'
+          'P.jsx("span",{children:"新手教程"})]}),'
+          'P.jsxs("select",{className:"project-action-select"',
+          'G2 yellow guide button in header')
+
+# 所有工具栏按钮补齐无障碍名称与快捷键提示；active 用 aria-pressed 表达开关状态。
+src = rep(src,
+          'function $n({active:i,danger:t,disabled:e,icon:s,shortcut:r,children:l,onClick:c,title:tt})'
+          '{return P.jsxs("button",{className:["toolbar-menu-item",i?"active":"",t?"danger":""]'
+          '.filter(Boolean).join(" "),type:"button",disabled:e,title:tt,onClick:f=>'
+          '{c(),f.currentTarget.closest("details")?.removeAttribute("open")}',
+          'function $n({active:i,danger:t,disabled:e,icon:s,shortcut:r,children:l,onClick:c,title:tt})'
+          '{return P.jsxs("button",{className:["toolbar-menu-item",i?"active":"",t?"danger":""]'
+          '.filter(Boolean).join(" "),type:"button",disabled:e,'
+          'title:tt||(r?String(l)+"（快捷键 "+r+"）":void 0),'
+          '"aria-label":tt||(typeof l==="string"?l:void 0),'
+          '"aria-pressed":typeof i==="boolean"?i:void 0,onClick:f=>'
+          '{c(),f.currentTarget.closest("details")?.removeAttribute("open")}',
+          'G3 toolbar accessible names and pressed state')
+
+src = rep(src,
+          'l&&i&&P.jsx(jR,{dragMoveModifier:d.dragMoveModifier',
+          'P.jsx(__lcGuideHost,{}),l&&i&&P.jsx(jR,{dragMoveModifier:d.dragMoveModifier',
+          'G4 mount tutorial outside project gate')
 
 if CHECK_ONLY:
     print('check only, not written')
