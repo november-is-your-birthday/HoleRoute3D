@@ -244,6 +244,37 @@ function __lcPickJumper(ev) {
 
 /* 属性面板里的「脚号 → 角色」对照行：让用户能直接拿实物封装图核对。
  * 只列脚号与角色，不列绝对坐标 —— 那个随摆放位置和旋转变化，看着更晕。 */
+/* 脚 i 落在洞洞板的哪一孔：与放置逻辑一致，脚 1 为锚点，其余按旋转后的相对位移推算 */
+function __lcPinHoleOf(c, i) {
+  try {
+    var offs = (c && c.pinOffsets) || [];
+    if (!offs.length || !c.position) return null;
+    var base = offs[0];
+    var dx = offs[i][0] - base[0];
+    var dz = offs[i][1] - base[1];
+    var a = Number(c.rotation) || 0;
+    var ca = Math.round(Math.cos(a)), sa = Math.round(Math.sin(a));
+    return [c.position[0] + dx * ca - dz * sa, c.position[1] + dx * sa + dz * ca];
+  } catch (e) {
+    return null;
+  }
+}
+/* 该脚在网表里属于哪个网络（没有就返回空串） */
+function __lcPinNetOf(ref, pinNo) {
+  try {
+    var pj = window.__lcProject || {};
+    var nets = (pj.importState && pj.importState.nets) || pj.nets || [];
+    var want = String(pinNo);
+    for (var i = 0; i < nets.length; i += 1) {
+      var nds = nets[i].nodes || [];
+      for (var j = 0; j < nds.length; j += 1) {
+        if (nds[j].ref === ref && String(nds[j].pin) === want) return String(nets[i].name || "");
+      }
+    }
+  } catch (e) {}
+  return "";
+}
+
 function __lcTriPinTable(c) {
   try {
     var offs = (c && c.pinOffsets) || [];
@@ -252,7 +283,13 @@ function __lcTriPinTable(c) {
     var parts = [];
     for (var i = 0; i < offs.length; i += 1) {
       var nm = names[i] || String(i + 1);
-      parts.push("脚" + (i + 1) + " " + nm);
+      /* 同时给出「孔位 + 网络」，可以直接对着实物核：字母说的脚是不是真的接了那个网 */
+      var hole = __lcPinHoleOf(c, i);
+      var net = __lcPinNetOf(c && c.name, i + 1);
+      var extra = [];
+      if (hole) extra.push("孔" + hole[0] + "," + hole[1]);
+      if (net) extra.push(net);
+      parts.push("脚" + (i + 1) + " " + nm + (extra.length ? "（" + extra.join(" · ") + "）" : ""));
     }
     var txt = parts.join("  ｜  ");
     /* 封装族与 kind 可能不一致：立创的 SOT-23 三极管在内部是 to92，

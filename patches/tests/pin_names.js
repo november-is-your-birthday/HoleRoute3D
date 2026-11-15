@@ -140,7 +140,7 @@ assert((bundle.match(/__lcPinLetters\(e,names,t,\{/g) || []).length === 5,
 /* 位置必须贴在本体表面，而不是飘在引脚上方/板面上：
    TO-92 顶面 1.66、TO-220 正面 z=l+.65、TO-247 正面 z=l+.76、
    TO-39 盖顶 1.9、TO-3 盖顶 1.63 */
-[['y:1.82,z:s[1]+.02,cx:s[0],span:.52', 'TO-92 字母贴顶面、x 夹进本体'],
+[['y:1.82,z:s[1]+.02,cx:s[0],span:.74', 'TO-92 字母贴顶面、x 夹进本体但贴到脚位上方'],
  ['y:1.72,z:l+.65,cx:r,span:.82', 'TO-220 字母贴正面'],
  ['y:2.07,cx:s[0],cz:s[1],k:.42', 'TO-39 字母贴金属盖顶面'],
  ['y:1.82,cx:s[0],cz:s[1],k:.5', 'TO-3 字母贴金属盖顶面'],
@@ -174,6 +174,8 @@ vm.runInContext(
   grabFn(bundle, 'function __lcPinPlanTag(') +
   grabFn(bundle, 'function __lcPinNamePlan(') +
   grabFn(bundle, 'function __lcPinNamesOf(') +
+  grabFn(bundle, 'function __lcPinHoleOf(') +
+  grabFn(bundle, 'function __lcPinNetOf(') +
   grabFn(bundle, 'function __lcTriPinTable('),
   tBox);
 const table = c => vm.runInContext('__lcTriPinTable(__c)', Object.assign(tBox, { __c: c }));

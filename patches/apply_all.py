@@ -606,7 +606,7 @@ NEW_GP = '''function GP(i,t,names){
   t.forEach(([h,d])=>{if(Math.abs(h-s[0])>f-.04){const g=s[0]+Math.sign(h-s[0])*(f-.04);Ii(e,[g,d],[h,d],1.12)}bn(e,h,d,1.16)});
   /* E/B/C 贴在元件顶面（y=1.64 之上 0.02）上，x 夹进本体 1.64 的宽度里；
      原来那版把字放在 y=1.85 的空中，看着像悬在引脚上方。 */
-  __lcPinLetters(e,names,t,{y:1.82,z:s[1]+.02,cx:s[0],span:.52,scale:.46});
+  __lcPinLetters(e,names,t,{y:1.82,z:s[1]+.02,cx:s[0],span:.74,scale:.44});
   Un(e,i,s[0],2,s[1]+.48,4194258,1.8);
   return e
 }'''

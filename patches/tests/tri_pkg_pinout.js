@@ -45,6 +45,8 @@ vm.runInContext(
   grabFn(bundle, 'function __lcPinNamePlan(') +
   grabFn(bundle, 'function __lcPinInk(') +
   grabFn(bundle, 'function __lcPinNamesOf(') +
+  grabFn(bundle, 'function __lcPinHoleOf(') +
+  grabFn(bundle, 'function __lcPinNetOf(') +
   grabFn(bundle, 'function __lcTriPinTable('),
   sandbox);
 
