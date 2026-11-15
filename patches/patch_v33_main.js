@@ -198,26 +198,62 @@ function __lcPinInk(names) {
   return (names && names.__lcFrom === "preset") ? __lcPresetInk : 16777215;
 }
 
+/* 引脚字母用**方形** canvas。
+ * 原来的 Un() 是给位号用的：canvas 256×64（4:1），Sprite 又按 scale.y = scale.x*0.25 压扁，
+ * 于是 scale=0.46 时真正的字高只有 0.07 格 —— 贴在元件上就是三个白点，肉眼几乎看不见。
+ * 这里改成 128×128、字号占 72%，同样的 scale 下字高有 0.36 格，和位号一个量级。 */
+function __lcPinSprite(g, txt, x, y, z, color, size) {
+  var cv = document.createElement("canvas");
+  cv.width = 128;
+  cv.height = 128;
+  var h = cv.getContext("2d");
+  if (!h) return;
+  h.clearRect(0, 0, 128, 128);
+  h.fillStyle = "#" + rR(color).toString(16).padStart(6, "0");
+  h.font = "700 92px Segoe UI, Arial";
+  h.textAlign = "center";
+  h.textBaseline = "middle";
+  h.lineJoin = "round";
+  h.lineWidth = 8;
+  h.strokeStyle = "rgba(8,12,18,0.6)";
+  h.strokeText(txt, 64, 68);
+  h.fillText(txt, 64, 68);
+  var sp = new B0(new U0({ map: new Vf(cv), transparent: !0 }));
+  sp.position.set(x, y, z);
+  sp.scale.set(size, size, 1);
+  sp.userData.__lcLabel = txt;
+  g.add(sp);
+}
+
 /* 给任意封装的每个脚标字母。
- * 以前只有 TO-92 和 LED 会标，TO-220 / TO-247 / TO-3 / TO-39 上压根看不到
- * E/C/B，用户只能靠外部封装图猜 —— 这也是「标注和封装对不上」的一部分。 */
+ * 关键约束：字母要**贴在元件主体表面**上，不能悬在引脚上空。
+ * 所以每个封装都按自己的形体给出「贴面高度 + 贴面深度」，而不是统一 y=1.02：
+ *   TO-92              顶面 y≈1.64，x 夹在本体宽度内（引脚比本体宽）
+ *   TO-220 / TO-247    正面（+Z 的大平面）z = 前面 + 0.015
+ *   TO-39 / TO-3       金属盖顶面 y = 盖顶 + 0.03，沿引脚方向按比例内推
+ * 这样从俯视看字母就落在本体上，不再漂在引脚旁边。 */
 function __lcPinLetters(g, names, pts, cfg) {
   if (!g || !names || !pts || !pts.length) return;
   var o = cfg || {};
   var n = Math.min(names.length, pts.length);
+  var col = __lcPinInk(names);
+  var sc = o.scale == null ? 0.55 : o.scale;
   var y = o.y == null ? 1.02 : o.y;
-  var sc = o.scale || 0.55;
-  var col = o.color || 16777215;
-  var kx = o.kx || 0, kz = o.kz || 0;
-  var fx = o.dx || 0, fz = o.dz || 0;
   for (var i = 0; i < n; i += 1) {
     var nm = names[i] ? String(names[i]) : "";
     if (!nm) continue;
     var px = pts[i][0], pz = pts[i][1];
-    /* 圆形封装（TO-39 / TO-3）把字往引脚外侧推，避免压在罐体上 */
-    var x = px + fx + (o.cx == null ? 0 : (px - o.cx) * kx);
-    var z = pz + fz + (o.cz == null ? 0 : (pz - o.cz) * kz);
-    Un(g, nm, x, y, z, col, sc);
+    var x = px, z = o.z == null ? pz : o.z;
+    /* 圆形封装：沿引脚方向往中心收，避免字母跑到罐体外面 */
+    if (o.k != null && o.cx != null && o.cz != null) {
+      x = o.cx + (px - o.cx) * o.k;
+      z = o.cz + (pz - o.cz) * o.k;
+    }
+    /* 本体比引脚跨度窄时（TO-92 : 本体 1.64、引脚跨度 2），把 x 夹进本体里 */
+    if (o.span != null && o.cx != null) {
+      x = Math.max(o.cx - o.span, Math.min(o.cx + o.span, x));
+    }
+    __lcPinSprite(g, nm, x, y, z, col, sc);
   }
 }
 

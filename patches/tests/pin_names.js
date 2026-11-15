@@ -127,10 +127,28 @@ assert(bundle.indexOf('led:i=>UP(i.color??15220543,hn(i),i.pinNames)') >= 0, 'le
 });
 assert(bundle.indexOf('function __lcPinLetters(') >= 0, '存在统一的引脚字母标注辅助函数');
 assert(bundle.indexOf('function __lcPinInk(names)') >= 0, '存在按来源取色的辅助函数');
+assert(bundle.indexOf('function __lcPinSprite(') >= 0, '字母用方形 canvas 绘制（不是 4:1 的位号字形）');
+assert(bundle.indexOf('cv.width = 128') >= 0 && bundle.indexOf('700 92px Segoe UI') >= 0,
+  '方形画布 128×128、字号 92px —— 同 scale 下字高约为旧实现的 5 倍');
 assert(bundle.indexOf('var __lcPresetInk = 16762967') >= 0, '预设色是暖黄 0xFFC857');
-assert((bundle.match(/color:__lcPinInk\(names\)/g) || []).length === 4,
-  'TO-220 / TO-39 / TO-3 / TO-247 都按来源上色');
-assert(bundle.indexOf('nmc=__lcPinInk(names)') >= 0, 'TO-92 也按来源上色');
+// 上色统一在 __lcPinLetters 内部按来源算，调用点不再各传一次 color
+assert(bundle.indexOf('var col = __lcPinInk(names);') >= 0, '字母颜色统一按来源计算');
+assert((bundle.match(/__lcPinLetters\(e,names,t,\{/g) || []).length === 5,
+  '五个封装都走同一套贴面标注（实际 ' + (bundle.match(/__lcPinLetters\(e,names,t,\{/g) || []).length + ' 处）');
+
+/* 位置必须贴在本体表面，而不是飘在引脚上方/板面上：
+   TO-92 顶面 1.66、TO-220 正面 z=l+.65、TO-247 正面 z=l+.76、
+   TO-39 盖顶 1.9、TO-3 盖顶 1.63 */
+[['y:1.82,z:s[1]+.02,cx:s[0],span:.52', 'TO-92 字母贴顶面、x 夹进本体'],
+ ['y:1.72,z:l+.65,cx:r,span:.82', 'TO-220 字母贴正面'],
+ ['y:2.07,cx:s[0],cz:s[1],k:.42', 'TO-39 字母贴金属盖顶面'],
+ ['y:1.82,cx:s[0],cz:s[1],k:.5', 'TO-3 字母贴金属盖顶面'],
+ ['y:1.88,z:l+.76,cx:r,span:1.3', 'TO-247 字母贴正面']].forEach(([needle, label]) => {
+  assert(bundle.indexOf(needle) >= 0, label + '（' + needle + '）');
+});
+// 之前为了「标出平面朝向」在 TO-92 本体上加的浅色窄条必须去掉：
+// 用户反馈「整个模型都变化了」，那根条不是原模型的一部分。
+assert(bundle.indexOf('__lcFlatFace') < 0, 'TO-92 不再往模型上加多余的标记条');
 ['function FP(i,t,names)', 'function zP(i,t,names)', 'function tR(i,t,names)', 'function eR(i,t,names)']
   .forEach(sig => assert(bundle.indexOf(sig) >= 0, '接受 pinNames：' + sig.slice(9, 13)));
 assert(bundle.indexOf('pinNames:__lcPinNamesOf(c)') >= 0, 'C2 在构建元件时计算 pinNames');

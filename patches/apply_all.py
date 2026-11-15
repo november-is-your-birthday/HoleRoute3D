@@ -600,24 +600,12 @@ NEW_GP = '''function GP(i,t,names){
   r.moveTo(-.82,-.26),r.lineTo(.82,-.26),r.absarc(0,-.26,.82,0,Math.PI,!1),r.lineTo(-.82,-.26);
   const l=new H0(r,{depth:.52,bevelEnabled:!0,bevelThickness:.04,bevelSize:.04,bevelSegments:3});l.center();
   const c=new Vt(l,Ne.blackPlastic);c.rotation.x=-Math.PI/2,c.position.set(s[0],1.38,s[1]),e.add(c);
-  /* 平面（印字面）朝向 +Z，用一条浅色窄条显式标出来：
-   * TO-92 的脚序基准就是「平面对自己」，不标出来用户没法判断哪边是 1 脚。 */
-  const fb=new Vt(new on(1.34,.24,.03),new qi({color:11708635}));
-  fb.position.set(s[0],1.38,s[1]+.285),fb.userData.__lcFlatFace=1,e.add(fb);
   const f=.82;
-  t.forEach(function(pr,idx){
-    const h=pr[0],d=pr[1];
-    if(Math.abs(h-s[0])>f-.04){const g=s[0]+Math.sign(h-s[0])*(f-.04);Ii(e,[g,d],[h,d],1.12)}
-    bn(e,h,d,1.16);
-    const nm=names&&names[idx]?String(names[idx]):"",
-      /* 未指定脚序时用暖黄，和「用户明确选的白色」区分开 */
-      nmc=__lcPinInk(names);
-    /* 字要浮在本体上方、且水平正对各自的孔：原来在 +Z 且压在元件底下，
-     * 俯视时中间那只脚的名字被本体整个挡住，等于没标；挪到外侧又会偏出
-     * 整整一格，看起来像标的是隔壁的孔。 */
-    if(nm)Un(e,nm,h,1.85,d,nmc,.8)
-  });
-  Un(e,i,s[0],2.3,s[1]+.48,4194258,1.8);
+  t.forEach(([h,d])=>{if(Math.abs(h-s[0])>f-.04){const g=s[0]+Math.sign(h-s[0])*(f-.04);Ii(e,[g,d],[h,d],1.12)}bn(e,h,d,1.16)});
+  /* E/B/C 贴在元件顶面（y=1.64 之上 0.02）上，x 夹进本体 1.64 的宽度里；
+     原来那版把字放在 y=1.85 的空中，看着像悬在引脚上方。 */
+  __lcPinLetters(e,names,t,{y:1.82,z:s[1]+.02,cx:s[0],span:.52,scale:.46});
+  Un(e,i,s[0],2,s[1]+.48,4194258,1.8);
   return e
 }'''
 src = rep_fn(src, 'function GP(i,t){const e=new Re,s=W0(t)', NEW_GP, 'P4 to92 E/C/B labels')
@@ -651,7 +639,7 @@ NEW_TO220 = '''function FP(i,t,names){
   const h=new Vt(new ze(.2,.2,.135,24),new Pe({color:724756,roughness:.35}));
   h.rotation.x=Math.PI/2,h.position.set(r,2.92,l+.36),e.add(h);
   t.forEach(([d,g])=>{const _=r+Math.sign(d-r)*1.125;Math.abs(d-r)>1.125?(Ii(e,[_,g],[d,g],.62),bn(e,d,g,.62)):bn(e,d,g,1.05)});
-  __lcPinLetters(e,names,t,{y:1.02,dz:-.48,scale:.68,color:__lcPinInk(names)});
+  __lcPinLetters(e,names,t,{y:1.72,z:l+.65,cx:r,span:.82,scale:.7});
   Un(e,i,r,2.12,l+.72,4194258,1.7);
   return e
 }'''
@@ -666,7 +654,7 @@ NEW_TO39 = '''function zP(i,t,names){
   c.position.set(s[0]-.72,1.25,s[1]),e.add(c);
   t.forEach(([f,h])=>{const d=f-s[0],g=h-s[1],_=Math.hypot(d,g);
     if(_>.78){const S=.78/_;Ii(e,[s[0]+d*S,s[1]+g*S],[f,h],.85)}bn(e,f,h,.86)});
-  __lcPinLetters(e,names,t,{y:1.02,cx:s[0],cz:s[1],kx:.6,kz:.6,scale:.62,color:__lcPinInk(names)});
+  __lcPinLetters(e,names,t,{y:2.07,cx:s[0],cz:s[1],k:.42,scale:.55});
   Un(e,i,s[0],1.98,s[1]+.48,1975339,1.6);
   return e
 }'''
@@ -679,7 +667,7 @@ NEW_TO3 = '''function tR(i,t,names){
   l.position.set(s[0],1.52,s[1]),e.add(l);
   t.forEach(([c,f])=>{const h=c-s[0],d=f-s[1],g=Math.hypot(h,d);
     if(g>1.08){const _=1.08/g;Ii(e,[s[0]+h*_,s[1]+d*_],[c,f],1.1)}bn(e,c,f,1.1)});
-  __lcPinLetters(e,names,t,{y:1.02,cx:s[0],cz:s[1],kx:.75,kz:.75,scale:.68,color:__lcPinInk(names)});
+  __lcPinLetters(e,names,t,{y:1.82,cx:s[0],cz:s[1],k:.5,scale:.6});
   Un(e,i,s[0],1.8,s[1]+.45,1975339,1.7);
   return e
 }'''
@@ -693,7 +681,7 @@ NEW_TO247 = '''function eR(i,t,names){
   const h=new Vt(new ze(.24,.24,.15,24),new Pe({color:724756,roughness:.35}));
   h.rotation.x=Math.PI/2,h.position.set(r,3.46,l+.42),e.add(h);
   t.forEach(([d,g])=>bn(e,d,g,1.15));
-  __lcPinLetters(e,names,t,{y:1.02,dz:-.5,scale:.72,color:__lcPinInk(names)});
+  __lcPinLetters(e,names,t,{y:1.88,z:l+.76,cx:r,span:1.3,scale:.8});
   Un(e,i,r,2.35,l+.8,4194258,1.8);
   return e
 }'''
