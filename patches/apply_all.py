@@ -1027,6 +1027,52 @@ src = rep(src, 'children:"未指定（只显示脚号）"',
           'children:"未指定（按封装常见排布暂标）"',
           'Y4 dropdown placeholder text')
 
+# =================================================================
+# v3.4.13：支持嘉立创 EDA 专业版 .enet（JSON）网表
+# 立创导出的 Protel2 网表里引脚只有脚号，三极管脚序只能靠封装去猜；
+# .enet 是 JSON，带 pinInfoMap（引脚名 / 脚号 / 所在网络）和标准封装名
+# （SOT-23-3_L2.9-W1.3-P1.90-LS2.4-BR），信息比 Protel 全且结构更稳。
+# 解析器见 patch_v34_main.js 的 __lcEnet()，产物与 e4() 同构，直接 t4() 合并。
+# =================================================================
+src = rep(src, r'''  if(/^\s*PROTEL\s+NETLIST/i.test(s))return"protel";
+  if(/^\s*\(export\b/.test(s))return"kicad";''',
+          r'''  if(/^\s*PROTEL\s+NETLIST/i.test(s))return"protel";
+  if(/^\s*\(export\b/.test(s))return"kicad";
+  /* 嘉立创 EDA 专业版 .enet：JSON，components 是「对象」；
+   * 工程文件（.json）里 components 是数组，靠这一点区分。 */
+  if(/^\s*\{/.test(s)){
+    try{
+      var jo=JSON.parse(s);
+      if(jo&&jo.components&&typeof jo.components==="object"&&!Array.isArray(jo.components))return"enet";
+    }catch(e){}
+  }''',
+          'Y5 sniff lceda enet json')
+
+src = rep(src, '''    try{
+      var s=p.kind==="protel"?__lcProtel(p.text):p.text;
+      t4(t,e4(s,p.name));
+    }catch(pe){
+      t.warnings.push({fileName:p.name,message:"无法识别该文件的格式（不是 KiCad / Protel 网表，也不是 Multisim 报告），已跳过。"});
+    }''',
+          '''    try{
+      if(p.kind==="enet"){
+        /* .enet 直接在内存里转成 e4 同构结构，不经过文本往返 */
+        t4(t,__lcEnet(JSON.parse(p.text),p.name));
+      }else{
+        var s=p.kind==="protel"?__lcProtel(p.text):p.text;
+        t4(t,e4(s,p.name));
+      }
+    }catch(pe){
+      t.warnings.push({fileName:p.name,message:p.kind==="enet"
+        ? "嘉立创 .enet 网表解析失败："+(pe&&pe.message?pe.message:"未知错误")
+        : "无法识别该文件的格式（不是 KiCad / Protel / 嘉立创 .enet 网表，也不是 Multisim 报告），已跳过。"});
+    }''',
+          'Y6 import enet branch')
+
+src = rep(src, 'title:"网表 / Multisim 报告",accept:".net,.txt,.csv,.cir"',
+          'title:"网表 / Multisim 报告 / .enet",accept:".net,.enet,.json,.txt,.csv,.cir"',
+          'Y7 accept .enet in file picker')
+
 if CHECK_ONLY:
     print('check only, not written')
     raise SystemExit(0)

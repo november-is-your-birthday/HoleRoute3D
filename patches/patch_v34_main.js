@@ -766,3 +766,174 @@ window.__lcDrcPanelV2 = __lcDrcPanelV2;
 window.__lcZeroOhm = __lcZeroOhm;
 window.__lcOhm = __lcOhm;
 window.__lcBridgeLinks = __lcBridgeLinks;
+
+/* =================================================================
+ * 嘉立创 EDA 专业版 .enet 网表（JSON）
+ * 规范：https://github.com/easyeda/easyeda-netlist-format（version 2.0.0）
+ *
+ * 结构是 { version, components:{ <uuid>:{ props, pinInfoMap } }, ... }。
+ * 与 Protel / KiCad 网表最大的三点不同：
+ *   1) 没有独立网络表，网络挂在每个引脚的 pinInfoMap[pin].net 上，要反向聚合；
+ *   2) 脚号可能是非数字（BGA 的 "1C12"），而下游只认 1..n，必须重编号；
+ *   3) 引脚名（pin.name）比 Protel 丰富：立创符号库会给 B/E/C、K/A、GND/VCC。
+ *      自建符号也可能只给 "1"/"2"/"3"，那种会在 __lcPinNamePlan 里被当脚号忽略，
+ *      自动退回封装预设 —— 所以照原样传递即可。
+ *
+ * 产物与 e4() 的输出同构，直接交给 t4() 合并，不经过任何文本往返。
+ * ================================================================= */
+/* 由位号 / 型号 / 封装推 KiCad 风格的 category，让下游 vA() 的规则表命中。
+ * 判断顺序刻意与 __lcProtel 里的 libPart() 保持一致，保证两种格式导入同一份
+ * 电路时得到相同的元件种类。 */
+function __lcEnetCategory(ref, value, fp, n) {
+  var p = (String(ref || "").match(/^[A-Za-z]+/) || [""])[0].toUpperCase();
+  var v = String(value || "").toUpperCase();
+  var f = String(fp || "").toUpperCase();
+  var b = v + " " + f;
+  var pad = n < 10 ? "0" + n : "" + n;
+  /* 电解 / 有极性电容的判定沿用 libPart */
+  var polar = (!/CBB|FILM|MLCC|涤纶|薄膜|独石|陶瓷|NP0|NPO|X7R|X5R|C0G/.test(b)) &&
+    (b.indexOf("CP") >= 0 || b.indexOf("POLAR") >= 0 || b.indexOf("电解") >= 0 ||
+      /ELE|TANT|RADIAL|RB[\d.]/.test(b) ||
+      (/\d\s*[UΜμ]F/.test(b) && !/(0402|0603|0805|1206|1210|2010|2512)/.test(b)));
+  if (p.indexOf("LED") === 0) return "Device:LED";
+  if (p === "PR" || p === "VR" || p === "RP" || p === "RV") return "Device:R_Potentiometer";
+  if (p === "RN") return "Device:R_Network";
+  if (p === "TB") return "TerminalBlock:TerminalBlock_01x02";
+  if (p === "SW" || p === "KEY") {
+    return (b.indexOf("KEY") >= 0 || b.indexOf("TACT") >= 0 || b.indexOf("PUSH") >= 0 ||
+      b.indexOf("BUTTON") >= 0 || b.indexOf("轻触") >= 0) ? "Button:SW_Push" : "Switch:SW_SPDT";
+  }
+  if (p === "J" || p === "P" || p === "H" || p === "CN" || p === "JP") return "Connector_Generic:Conn_01x" + pad;
+  if (p === "Y" || p === "X" || p === "XTAL") return "Device:Crystal";
+  if (p === "BZ" || p === "LS") return "Device:Buzzer";
+  if (p === "Q" || p === "T" || p === "VT") {
+    /* 功率 FET 才用 TO-220 外形；小信号 FET（SOT-23 / SC-70）和 BJT 一样，
+     * 用三脚小管外形更贴实物。 */
+    var isFet = /MOS|FET|2N7\d|IRF|SI23|AO3|BSS|2SK|2SJ/.test(b);
+    var small = /SOT|SC-?70|SOT-?23|SOT-?323/.test(b);
+    if (isFet && !small) return "Transistor_FET:NMOS";
+    return "Transistor_BJT:NPN";
+  }
+  /* 8 脚时 part 就叫 "DIP"，下游 yA() 会按实际脚数补成 DIP8 —— 与 libPart 一致 */
+  if (p === "U" || p === "IC") return "Socket:" + (n === 8 ? "DIP" : "DIP" + n);
+  if (p === "F") return "Device:Fuse";
+  if (p === "R") return "Device:R";
+  if (p === "C") return polar ? "Device:CP" : "Device:C";
+  var c0 = p.charAt(0);
+  if (c0 === "R") return "Device:R";
+  if (c0 === "C") return polar ? "Device:CP" : "Device:C";
+  if (c0 === "L") return "Device:L";
+  if (c0 === "D") return "Device:D";
+  if (c0 === "F") return "Device:Fuse";
+  return "Unknown:" + String(f || v || "Generic").replace(/\s+/g, "_");
+}
+function __lcEnet(obj, fileName) {
+  var out = { components: [], nets: [], pinInfo: {}, warnings: [] };
+  var src = fileName || "enet";
+  var comps = obj && obj.components;
+  if (!comps || typeof comps !== "object" || Array.isArray(comps)) {
+    out.warnings.push({
+      fileName: src,
+      message: "不是嘉立创 EDA 专业版的 .enet 网表：缺少 components 字段。请在「导出 → 网表 → 网表类型」里选「嘉立创EDA(专业版)(.enet)」。"
+    });
+    return out;
+  }
+  if (obj.version && String(obj.version).charAt(0) !== "2") {
+    out.warnings.push({
+      fileName: src,
+      message: "网表版本为 " + obj.version + "，本程序按 2.x 解析；若字段有变化请反馈。"
+    });
+  }
+  var ids = Object.keys(comps);
+  var netMap = {}, netOrder = [];
+  var noPin = 0, renamed = 0;
+  for (var i = 0; i < ids.length; i += 1) {
+    var it = comps[ids[i]] || {};
+    var pr = it.props || {};
+    var ref = String(pr.Designator == null ? "" : pr.Designator).trim();
+    if (!ref) {
+      out.warnings.push({ fileName: src, message: "元件 " + ids[i] + " 没有位号（Designator），已跳过。" });
+      continue;
+    }
+    var value = String(pr.Value == null ? "" : pr.Value).trim();
+    var dev = String(pr.DeviceName == null ? "" : pr.DeviceName).trim();
+    var fp = String(pr.FootprintName == null ? "" : pr.FootprintName).trim();
+    if (!fp) fp = String(pr["Supplier Footprint"] == null ? "" : pr["Supplier Footprint"]).trim();
+    if (!value) value = dev;
+
+    /* ---- 引脚：先收集，再排序重编号 ---- */
+    var raw = {}, nums = [], words = [];
+    var pm = it.pinInfoMap;
+    if (pm && typeof pm === "object") {
+      var pkeys = Object.keys(pm);
+      for (var k = 0; k < pkeys.length; k += 1) {
+        var pk = pkeys[k];
+        var pv = pm[pk];
+        if (!pv) pv = {};
+        var num = pv.number == null || pv.number === "" ? pk : String(pv.number);
+        num = String(num).trim();
+        if (!num) num = String(pk).trim();
+        if (!num || raw[num]) continue;
+        raw[num] = pv;
+        if (/^\d+$/.test(num)) nums.push(Number(num)); else words.push(num);
+      }
+    }
+    nums.sort(function (a, b) { return a - b; });
+    words.sort(function (a, b) { return String(a).localeCompare(String(b), void 0, { numeric: true }); });
+    var map = {}, next = 1;
+    nums.forEach(function (x) { map[String(x)] = String(x); if (x >= next) next = x + 1; });
+    words.forEach(function (w) {
+      /* 字母脚号（A/B、K/A 之类）排到数字脚号之后，与 __lcProtel 的重编号规则一致 */
+      map[w] = String(next);
+      next += 1;
+      renamed += 1;
+    });
+
+    var info = {};
+    var rawNums = Object.keys(raw);
+    var pinCount = rawNums.length;
+    for (var r = 0; r < rawNums.length; r += 1) {
+      var rn = rawNums[r];
+      var pvo = raw[rn] || {};
+      var nn = map[rn];
+      if (!nn) continue;
+      var nm = pvo.name == null ? "" : String(pvo.name).trim();
+      var typ = "";
+      if (pvo.props && pvo.props["Pin Type"]) typ = String(pvo.props["Pin Type"]);
+      info[nn] = { name: nm, type: typ };
+      var net = pvo.net == null ? "" : String(pvo.net).trim();
+      if (!net) continue;
+      var bucket = netMap[net];
+      if (!bucket) {
+        bucket = netMap[net] = { name: net, nodes: [], sourceFile: src };
+        netOrder.push(net);
+      }
+      bucket.nodes.push({ ref: ref, pin: nn, sourceFile: src });
+    }
+    if (!pinCount) noPin += 1;
+    out.pinInfo[ref] = info;
+
+    out.components.push({
+      ref: ref,
+      value: value,
+      category: __lcEnetCategory(ref, value, fp, pinCount),
+      packageName: fp,
+      sourceFile: src
+    });
+  }
+  for (var m = 0; m < netOrder.length; m += 1) {
+    var b2 = netMap[netOrder[m]];
+    if (b2 && b2.nodes.length) out.nets.push(b2);
+  }
+  if (!out.components.length) {
+    out.warnings.push({ fileName: src, message: ".enet 里没有可用元件（components 为空或全部缺位号）。" });
+  }
+  if (noPin) {
+    out.warnings.push({ fileName: src, message: "有 " + noPin + " 个元件在 .enet 里没有引脚信息（pinInfoMap 为空），已按 2 脚占位。" });
+  }
+  if (renamed) {
+    out.warnings.push({ fileName: src, message: "有 " + renamed + " 个字母脚号（如 A/B、K/A）已按顺序重编号为数字，引脚名仍按原名显示。" });
+  }
+  return out;
+}
+window.__lcEnet = __lcEnet;
