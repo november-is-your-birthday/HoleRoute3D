@@ -996,6 +996,37 @@ NEW_UP = '''function UP(i,t,names){
 src = rep_fn(src, 'function UP(i,t,names){',
              NEW_UP, 'Z3 led black cathode bar')
 
+# =================================================================
+# v3.4.12：按「封装」而不是「内部 kind」判断三极管脚序
+# 立创导出的 Protel 网表里没有引脚功能名（pinInfo 只有 "1"/"2"/"3"），
+# 唯一的依据是封装。而 SOT-23 的 BJT 是 JEDEC 标准 1=B 2=E 3=C，
+# 与 TO-92 的 1=E 2=B 3=C 正好把 B/E 对调 —— 旧版本按 kind=to92 取预设，
+# 于是把基极标成 E、发射极标成 B。
+# 这里补三件配套的事：
+#   1) Protel 转换器补 (fields (field (name "Footprint") ...))。原先只写了
+#      旧式的 (footprint "...")，而解析端 s4() 只认 KiCad 8 的 fields 结构，
+#      于是 packageName 一直是空 —— 立创网表里的封装信息就这么丢了。
+#   2) 导入时把认到的封装也记进组件（老工程没有这个字段，不影响渲染）。
+#   3) SOT 系列封装也能在属性面板里看到「三极管脚序」下拉。
+# =================================================================
+src = rep(src, """out.push('      (libsource (lib "' + lp[0] + '") (part "' + lp[1] + '") (description "")))');""",
+          """out.push('      (fields (field (name "Footprint") "' + __lcEsc(c.footprint) + '"))');\n"""
+          """    out.push('      (libsource (lib "' + lp[0] + '") (part "' + lp[1] + '") (description "")))');""",
+          'Y1 protel keeps footprint in kicad8 fields block')
+
+src = rep(src, 'pinOffsets:Qf(S),position:_,rotation:0,mounted:!1,isFallback:f.isFallback',
+          'pinOffsets:Qf(S),footprint:String(c.footprint||c.packageName||""),position:_,rotation:0,mounted:!1,isFallback:f.isFallback',
+          'Y2 store package name on imported component')
+
+src = rep(src, '["to92","to220","to3","to247","to39"].indexOf(O.kind)>=0',
+          '(["to92","to220","to3","to247","to39"].indexOf(O.kind)>=0'
+          '||!!__lcPkgPresets[__lcPkgFamily(O)])',
+          'Y3 pin-order dropdown also for SOT packages')
+
+src = rep(src, 'children:"未指定（只显示脚号）"',
+          'children:"未指定（按封装常见排布暂标）"',
+          'Y4 dropdown placeholder text')
+
 if CHECK_ONLY:
     print('check only, not written')
     raise SystemExit(0)

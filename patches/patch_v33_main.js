@@ -41,11 +41,82 @@ function __lcHistoryLimit() {
   return Math.max(20, Math.min(1000, v));
 }
 
-/* ---------- 引脚名规划：pinInfo > 手选脚序 > 数字 ---------- */
+/* ---------- 引脚名规划：pinInfo > 手选脚序 > 封装预设 ---------- */
 /* 三极管封装：只有这几类才把手选脚序解释成 E/C/B 角色 */
 var __lcTriKinds = { to92: 1, to39: 1, to220: 1, to247: 1, to3: 1 };
 /* 各封装的常见排布，仅用于属性面板给「推荐值」提示，判定一律按用户实际选择 */
 var __lcPinOrderPresets = { to92: "EBC", to39: "EBC", to220: "BCE", to247: "BCE", to3: "BEC" };
+
+/* ---------- 按「封装」而不是按内部 kind 取预设 ----------
+ * 根因：嘉立创 / 立创 EDA 导出的 Protel 网表里没有引脚功能名
+ * （pinInfo 里是 "1"/"2"/"3"），而内部的 kind 只剩 5 种直插外形。
+ * 贴片的 SOT-23 三极管会被归成 to92，于是预设按 TO-92 的 E-B-C 去套，
+ * 而 SOT-23 的 BJT 是 JEDEC 标准 1=B 2=E 3=C —— B 和 E 正好互换。
+ * 例：立创的 S8050_SOT-23，网表 Q1-1 接基极分压、Q1-2 经 R1 出射极、
+ * Q1-3 接 +5V，与 1=B 2=E 3=C 完全对应，旧版本却标成 1=E 2=B。
+ *
+ * 所以预设改成两级：先看封装族（footprint / value 里的字符串），
+ * 认不出来再退回 kind 的旧预设，两者都没有就只标脚号。
+ */
+var __lcPkgPresets = {
+  to92: "EBC", to39: "EBC", to220: "BCE", to247: "BCE", to3: "BEC",
+  /* 贴片三脚 BJT：1=B 2=E 3=C（S8050/S8550/MMBT3904/BC817 均如此） */
+  sot23: "BEC",
+  /* 带散热片的贴片功率管：1=B 2=C 3=E，散热片与 2 脚同电位 */
+  sot223: "BCE", sot89: "BCE", to252: "BCE"
+};
+/* 封装族的中文/标准名，面板上显示用 */
+var __lcPkgTitles = {
+  to92: "TO-92", to39: "TO-39", to220: "TO-220", to247: "TO-247", to3: "TO-3",
+  sot23: "SOT-23", sot223: "SOT-223", sot89: "SOT-89", to252: "TO-252(DPAK)"
+};
+/* 从封装名 / 型号里认封装族。取多个字段拼起来，因为立创的
+ * FOOTPRINT 是 "S8050_SOT-23"、Device 是 "S8050_SOT_NPN"，
+ * 而组件本身只留了 kind/label/name/value —— 封装名要靠 importState 补。
+ * 老工程连 importState 里的封装也是空的（当时没解析），只剩 value 可依据。 */
+function __lcPkgText(c) {
+  if (!c) return "";
+  var keys = ["footprint", "packageName", "value", "package", "pkg", "device", "footprintName"];
+  var out = [], i;
+  for (i = 0; i < keys.length; i += 1) {
+    var v = c[keys[i]];
+    if (v == null) continue;
+    var s = String(v).trim();
+    if (s) out.push(s);
+  }
+  /* 导入时认到的封装名存在 importState.components 的同 ref 条目里 */
+  var pj = window.__lcProject || {};
+  var ic = pj.importState && pj.importState.components;
+  if (ic && c.name) {
+    for (i = 0; i < ic.length; i += 1) {
+      var e = ic[i];
+      if (e && e.ref === c.name) {
+        var pn = e.packageName;
+        if (pn) out.push(String(pn).trim());
+        break;
+      }
+    }
+  }
+  return out.join(" ").toUpperCase();
+}
+function __lcPkgFamily(c) {
+  var s = __lcPkgText(c);
+  if (!s) return "";
+  /* 直插优先：名字里同时出现 "TO-92" 与其它字样时以直插为准 */
+  if (/TO[-_ ]?92/.test(s)) return "to92";
+  if (/TO[-_ ]?39/.test(s)) return "to39";
+  if (/TO[-_ ]?247/.test(s)) return "to247";
+  if (/TO[-_ ]?220/.test(s)) return "to220";
+  if (/TO[-_ ]?3(\b|[^0-9])/.test(s)) return "to3";
+  /* 贴片：先认带数字的具体封装，再兜底 SOT */
+  if (/SOT[-_ ]?223/.test(s)) return "sot223";
+  if (/SOT[-_ ]?89/.test(s)) return "sot89";
+  if (/TO[-_ ]?252|D2?PAK/.test(s)) return "to252";
+  if (/SOT[-_ ]?23|SC[-_ ]?70|SOT[-_ ]?323|SOT[-_ ]?523|TSOT/.test(s)) return "sot23";
+  /* 只写了 SOT 没写型号（立创 Device 常为 XXX_SOT_NPN）→ 按最常见的 SOT-23 */
+  if (/SOT/.test(s)) return "sot23";
+  return "";
+}
 /* 手选脚序就是「逐脚角色」：EBC 表示脚1=E、脚2=B、脚3=C。
  * 不再按封装查表 —— 以前 to220/to3/to247 三个键全返回 B-C-E，
  * 用户选 EBC 得到的却是 1=B 2=C 3=E，与封装完全对不上。 */
@@ -63,7 +134,7 @@ function __lcPinPlanTag(out, from) {
   try { out.__lcFrom = from; } catch (e) {}
   return out;
 }
-function __lcPinNamePlan(kind, pinInfoEntry, pinOrder, pinCount) {
+function __lcPinNamePlan(kind, pinInfoEntry, pinOrder, pinCount, pkg) {
   var n = Math.max(1, Number(pinCount) || 0);
   var out = [], i;
   /* 1) 网表自带引脚名（KiCad 的 pinInfo 最准）
@@ -83,8 +154,11 @@ function __lcPinNamePlan(kind, pinInfoEntry, pinOrder, pinCount) {
       return __lcPinPlanTag(names, "pinInfo");
     }
   }
-  /* 2) 用户在属性面板手选的脚序（逐脚角色，与封装无关） */
-  if (__lcTriKinds[kind]) {
+  /* 2) 用户在属性面板手选的脚序（逐脚角色，与封装无关）
+   *    封装族只在「三脚」时才算三极管：SOT-23 也有六脚版本（SOT-23-6），
+   *    那种是芯片，不能套 B-E-C。 */
+  var tri = !!__lcTriKinds[kind] || (!!__lcPkgPresets[pkg] && n === 3);
+  if (tri) {
     var key = __lcPinOrderOf(pinOrder);
     if (key) {
       out = [];
@@ -92,10 +166,10 @@ function __lcPinNamePlan(kind, pinInfoEntry, pinOrder, pinCount) {
       for (i = 0; i < n; i += 1) out.push(key.charAt(i) || String(i + 1));
       return __lcPinPlanTag(out, "manual");
     }
-    /* 3) 还没选脚序：按本封装的常见排布标出来（黄色）。
-     *    以前这里直接退回 1/2/3，3D 上等于「没有 EBC 标注」——用户提的就是这一点。
-     *    预设只是默认展示，不写进工程；实物不符时改下拉即可。 */
-    var pre = __lcPinOrderPresets[kind];
+    /* 3) 还没选脚序：先按封装族的常见排布标出来（黄色）。
+     *    封装认不出来时退回旧的 kind 预设，两者都没有就落到 4) 只标脚号。
+     *    以前这里只认 kind，SOT-23 被当成 TO-92 就得到反过来的 E/B —— 用户提的就是这一点。 */
+    var pre = __lcPkgPresets[pkg] || __lcPinOrderPresets[kind];
     if (pre) {
       out = [];
       for (i = 0; i < n; i += 1) out.push(pre.charAt(i) || String(i + 1));
@@ -157,7 +231,7 @@ function __lcPickJumper(ev) {
   var pi = (pj.importState && pj.importState.pinInfo) || {};
   var n = (c.pinOffsets && c.pinOffsets.length) || c.pinCount || 0;
   try {
-    return __lcPinNamePlan(c.kind, pi[c.name], c.pinOrder, n);
+    return __lcPinNamePlan(c.kind, pi[c.name], c.pinOrder, n, __lcPkgFamily(c));
   } catch (e) {
     return [];
   }
@@ -176,11 +250,18 @@ function __lcTriPinTable(c) {
       parts.push("脚" + (i + 1) + " " + nm);
     }
     var txt = parts.join("  ｜  ");
-    var rec = __lcPinOrderPresets[c.kind];
+    /* 封装族与 kind 可能不一致：立创的 SOT-23 三极管在内部是 to92，
+     * 3D 外形用的还是 TO-92。把认到的真实封装标出来，免得用户以为软件认错了。 */
+    var pkg = __lcPkgFamily(c);
+    if (pkg && pkg !== String(c.kind)) {
+      txt = "封装 " + (__lcPkgTitles[pkg] || pkg) + "　" + txt;
+    }
+    var rec = __lcPkgPresets[pkg] || __lcPinOrderPresets[c.kind];
     var key = __lcPinOrderOf(c.pinOrder);
     if (!key) {
       if (rec) {
-        txt += "　（未指定脚序，3D 上按本封装常见排布 " + rec.split("").join("-") +
+        var who = pkg ? (__lcPkgTitles[pkg] || pkg) : "本封装";
+        txt += "　（未指定脚序，按 " + who + " 常见排布 " + rec.split("").join("-") +
           " 暂标，黄色；与实物不符就在上面换一种）";
       } else {
         txt += "　（未指定脚序，只显示脚号）";
