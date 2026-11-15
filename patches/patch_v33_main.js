@@ -74,12 +74,10 @@ var __lcPkgTitles = {
  * FOOTPRINT 是 "S8050_SOT-23"、Device 是 "S8050_SOT_NPN"，
  * 而组件本身只留了 kind/label/name/value —— 封装名要靠 importState 补。
  *
- * 关键边界：只写 "SOT" 的库型号不能当成 SOT-23。
- * 例：S8050_SOT_NPN 是立创符号库里常见的三极管 part 名，它只说明
- * 「SOT 类封装 + NPN」，并没有写出脚距/脚数；实际器件完全可能是 TO-92。
- * 老工程又恰好没有 FOOTPRINT 字段，如果在这里兜底成 SOT-23，就会把
- * TO-92 的 1=E 2=B 3=C 标成 1=B 2=E 3=C。现在这类含糊名称不参与封装判定，
- * 交给当前 3D 外形（kind）兜底。 */
+ * 旧工程的兼容规则：明明没有 FOOTPRINT，value 只有 S8050_SOT_NPN 这种
+ * 立创符号库名称时，仍要按 SOT-23 处理。它与同一电路的新 .enet 对照后
+ * 确认就是 SOT-23；而且 $1N5（C2/R3 基极节点）在脚 1，正好对应 1=B。
+ * 若显式 FOOTPRINT 是 TO-92，函数会先命中 TO-92 并直接返回，不会被 value 带偏。 */
 function __lcPkgText(c) {
   if (!c) return "";
   var keys = ["footprint", "packageName", "value", "package", "pkg", "device", "footprintName"];
@@ -114,11 +112,14 @@ function __lcPkgFamily(c) {
   if (/TO[-_ ]?247/.test(s)) return "to247";
   if (/TO[-_ ]?220/.test(s)) return "to220";
   if (/TO[-_ ]?3(\b|[^0-9])/.test(s)) return "to3";
-  /* 贴片：必须是带型号的明确封装才认；裸 "SOT" 不猜 */
+  /* 贴片：先认带型号的具体封装，再兜底 SOT */
   if (/SOT[-_ ]?223/.test(s)) return "sot223";
   if (/SOT[-_ ]?89/.test(s)) return "sot89";
   if (/TO[-_ ]?252|D2?PAK/.test(s)) return "to252";
   if (/SOT[-_ ]?23|SC[-_ ]?70|SOT[-_ ]?323|SOT[-_ ]?523|TSOT/.test(s)) return "sot23";
+  /* 立创旧工程常见：只有 value=S8050_SOT_NPN，没有 FOOTPRINT。
+     这是三脚 SOT-23 BJT 的符号库名，按 SOT-23 处理。 */
+  if (/SOT/.test(s)) return "sot23";
   return "";
 }
 /* 手选脚序就是「逐脚角色」：EBC 表示脚1=E、脚2=B、脚3=C。
