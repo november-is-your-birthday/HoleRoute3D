@@ -931,6 +931,71 @@ src = rep(src,
           'children:"内测版：功能仍在打磨，可能存在缺陷。重要工程请随时导出 JSON 备份。"})',
           'Y2 empty workspace beta notice')
 
+# =================================================================
+# v3.4.11：二极管 / LED 的负极标记
+# 用户要求「在模型上的负极增加黑色圆环或者黑色竖线」。
+# - 二极管（IP）：整圈黑色环套在 K 端。原来的环是金属色、而且装在 A 端（+0.58 朝脚 2）。
+# - LED（UP）：底座外侧贴一条黑色竖线。原来那条白色细条只偏中心 22%、长 0.46，
+#   而底座半径 0.74 —— 整条埋在底座内部，等于没有标记。
+# 哪一端是负极由 __lcCathodeIndex 判定：网表给了 A/K 就按名字，否则按约定 pin1=K
+# （KiCad / 立创的二极管、LED 符号都是 pin1=K、pin2=A）。
+# =================================================================
+NEW_IP = '''function IP(i,t,names){
+  const e=dy(i,Ne.diodeBody,.42,1.85,!1,t),
+    [s,r]=Qa(t??[[-3,0],[3,0]]),
+    l=(s[0]+r[0])/2,c=(s[1]+r[1])/2,
+    f=Math.atan2(r[1]-s[1],r[0]-s[0]),
+    sp=Math.max(1,Sc(s,r)),
+    ln=Math.min(sp*.72,Math.max(1.85,sp-1.1)),
+    /* 阴极环落在 K 那一端：脚 1 在 s 侧、脚 2 在 r 侧 */
+    dir=__lcCathodeIndex(names)===0?-1:1,
+    off=Math.min(.58,Math.max(.2,ln/2-.12));
+  const h=new Vt(new ze(.472,.472,.2,28),__lcInkBlack(.42)),
+    rx=l+Math.cos(f)*off*dir, rz=c+Math.sin(f)*off*dir;
+  h.rotation.z=Math.PI/2,h.rotation.y=-f;
+  h.position.set(rx,1.55,rz);
+  h.userData.__lcCathodeMark=1;
+  e.add(h);
+  /* 本体本身就是深色（#1F2A2B），纯黑环会糊成一片；
+     环的两侧各压一条极细的浅色边，靠「黑带 + 银边」把环的边界显出来，和实物一样 */
+  [-1,1].forEach(function(sgn){
+    const edge=new Vt(new ze(.478,.478,.009,28),__lcInkEdge());
+    edge.rotation.z=Math.PI/2,edge.rotation.y=-f;
+    edge.position.set(rx,1.55+sgn*.104,rz);
+    e.add(edge)
+  });
+  return e
+}'''
+src = rep_fn(src, 'function IP(i,t){const e=dy(i,Ne.diodeBody,.42,1.85,!1,t)',
+             NEW_IP, 'Z1 diode cathode ring')
+src = rep(src, 'diode:i=>IP(i.label??"D",hn(i))',
+          'diode:i=>IP(i.label??"D",hn(i),i.pinNames)', 'Z2 diode dispatch passes pinNames')
+
+NEW_UP = '''function UP(i,t,names){
+  const e=new Re,[s,r]=Qa(t),l=(s[0]+r[0])/2,c=(s[1]+r[1])/2,
+    f=new Pe({color:i,roughness:.12,transparent:!0,opacity:.72}),
+    h=new Vt(new Ki(.72,28,16),f);h.scale.y=.85,h.position.set(l,1.65,c),e.add(h);
+  const d=new Vt(new ze(.74,.74,.24,28),f);d.position.set(l,.98,c),e.add(d);
+  Y0(e,[s,r],[l,c],.74,.88,.98);
+  if(t.length>=2){
+    /* 负极标记：绕底座一整圈的黑色环带。
+       原先试过「竖线」，但线只朝向一侧，相机转到背面就看不见；
+       环在任意角度都成立，而且和二极管那边（也是环）保持一致。
+       底座半径 0.74，环放在 0.752 的外侧。 */
+    const ring=new Vt(new ze(.752,.752,.075,32),__lcInkBlack(.5));
+    ring.position.set(l,1.02,c);
+    ring.userData.__lcCathodeMark=1;
+    e.add(ring)
+  }
+  t.forEach(function(pr,idx){
+    const nm=names&&names[idx]?String(names[idx]):"";
+    if(nm)Un(e,nm,pr[0],1.05,pr[1]+.52,16777215,.62)
+  });
+  return e
+}'''
+src = rep_fn(src, 'function UP(i,t,names){',
+             NEW_UP, 'Z3 led black cathode bar')
+
 if CHECK_ONLY:
     print('check only, not written')
     raise SystemExit(0)

@@ -198,6 +198,31 @@ function __lcPinInk(names) {
   return (names && names.__lcFrom === "preset") ? __lcPresetInk : 16777215;
 }
 
+/* ---------- 二极管 / LED 的负极（阴极 K）标记 ---------- */
+/* 哪只脚是负极：网表给了 A/K 就按名字找；没给就按行业约定取脚 1。
+ * KiCad、立创 EDA 的二极管与 LED 符号都是 pin1 = K、pin2 = A。
+ * 注意导入器常把引脚名合成为 "1"/"2"，那种情况等同于没给名字。 */
+function __lcCathodeIndex(names) {
+  if (names && names.length) {
+    for (var i = 0; i < names.length; i += 1) {
+      var t = String(names[i] == null ? "" : names[i]).toUpperCase();
+      if (t === "K" || t === "C") return i;
+      if (t === "A") return i === 0 ? 1 : 0;
+    }
+  }
+  return 0;
+}
+/* 标记用的黑：纯黑（0x000000）在深色本体上会糊成一片，这里用近黑 + 一点金属度，
+ * 靠圆柱面的高光和几何凸出的轮廓把「环」显出来。 */
+function __lcInkBlack(rough) {
+  return new Pe({ color: 0x0b0d0e, roughness: rough == null ? 0.5 : rough, metalness: 0.08 });
+}
+/* 黑环两侧的浅色细边：二极管本体本身就是深色（#1F2A2B），
+ * 纯黑环会糊成一片，靠这两条银边把环的边界显出来。 */
+function __lcInkEdge() {
+  return new Pe({ color: 0x7c858c, roughness: 0.5, metalness: 0.3 });
+}
+
 /* 引脚字母用**方形** canvas。
  * 原来的 Un() 是给位号用的：canvas 256×64（4:1），Sprite 又按 scale.y = scale.x*0.25 压扁，
  * 于是 scale=0.46 时真正的字高只有 0.07 格 —— 贴在元件上就是三个白点，肉眼几乎看不见。
