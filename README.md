@@ -37,9 +37,9 @@
 
 它适合教学实验、模块板、转接板和中小规模自制电路；**不适合代替专业 PCB 软件设计多层板、高速或大电流电路。**
 
-| 实体视图 | 透视视图 |
+| 布线俯视图 | 3D 元件视图 |
 |---|---|
-| ![实体视图](docs/screenshots/board-solid.jpg) | ![透视视图](docs/screenshots/board-xray.jpg) |
+| ![布线俯视图](docs/screenshots/board-solid.jpg) | ![3D 元件视图](docs/screenshots/board-xray.jpg) |
 
 ## 3. 如何安装
 
