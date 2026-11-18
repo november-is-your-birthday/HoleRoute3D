@@ -122,6 +122,28 @@ function __lcPkgFamily(c) {
   if (/SOT/.test(s)) return "sot23";
   return "";
 }
+/* 三极管极性（NPN/PNP）：值 / 封装 / 型号里的字样和型号表优先，
+ * 都判不出来才看类别（KiCad: Transistor_BJT:PNP）。
+ * 只用于属性面板显示与库归类，不参与脚序判定。 */
+function __lcTriPolarity(c) {
+  try {
+    var pol = __lcTriPolarityText(__lcPkgText(c));
+    if (pol) return pol;
+    var cat = (c && c.category) || "";
+    if (!cat) {
+      var pj = window.__lcProject || {};
+      var ic = pj.importState && pj.importState.components;
+      if (ic && c && c.name) {
+        for (var i = 0; i < ic.length; i += 1) {
+          if (ic[i] && ic[i].ref === c.name) { cat = ic[i].category || ""; break; }
+        }
+      }
+    }
+    return __lcTriPolarityText(cat);
+  } catch (e) {
+    return "";
+  }
+}
 /* 手选脚序就是「逐脚角色」：EBC 表示脚1=E、脚2=B、脚3=C。
  * 不再按封装查表 —— 以前 to220/to3/to247 三个键全返回 B-C-E，
  * 用户选 EBC 得到的却是 1=B 2=C 3=E，与封装完全对不上。 */
@@ -350,6 +372,10 @@ function __lcTriPinTable(c) {
       parts.push("脚" + (i + 1) + " " + nm + (extra.length ? "（" + extra.join(" · ") + "）" : ""));
     }
     var txt = parts.join("  ｜  ");
+    /* 极性（NPN/PNP）标在最前面；判不出就省略，不硬猜 */
+    var pol = "";
+    try { if (typeof __lcTriPolarity === "function") pol = __lcTriPolarity(c); } catch (e) {}
+    if (pol) txt = (pol === "pnp" ? "PNP" : "NPN") + "　" + txt;
     /* 封装族与 kind 可能不一致：立创的 SOT-23 三极管在内部是 to92，
      * 3D 外形用的还是 TO-92。把认到的真实封装标出来，免得用户以为软件认错了。 */
     var pkg = __lcPkgFamily(c);

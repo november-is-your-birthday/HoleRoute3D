@@ -46,7 +46,23 @@ function __lcMSPkgPins(pkg,refPrefix){
   var n=Number(m[1]);
   return n>=4&&n<=64?n:void 0;
 }
-var __lcMSDefPins={"Device:R":2,"Device:C":2,"Device:CP":2,"Device:L":2,"Device:D":2,"Device:LED":2,"Device:R_Potentiometer":3,"Transistor_BJT:NPN":3,"Transistor_FET:MOSFET":3,"Diode_Bridge:BR":4,"Relay:Relay_SPDT":5,"Device:Crystal":2,"Device:FUSE":2,"Device:Buzzer":2,"Switch:SW_SPDT":3,"Switch:SW_DIP":8,"Button:SW_Push":4,"TerminalBlock:TerminalBlock":2,"TestPoint:TestPoint":1,"Display_Character:7SEG":10,"Display_Character:ALNUM":18,"Socket:DIP":8,"Connector_Generic:Conn":2,"Unknown:GENERIC":2};
+var __lcMSDefPins={"Device:R":2,"Device:C":2,"Device:CP":2,"Device:L":2,"Device:D":2,"Device:LED":2,"Device:R_Potentiometer":3,"Transistor_BJT:NPN":3,"Transistor_BJT:PNP":3,"Transistor_FET:MOSFET":3,"Diode_Bridge:BR":4,"Relay:Relay_SPDT":5,"Device:Crystal":2,"Device:FUSE":2,"Device:Buzzer":2,"Switch:SW_SPDT":3,"Switch:SW_DIP":8,"Button:SW_Push":4,"TerminalBlock:TerminalBlock":2,"TestPoint:TestPoint":1,"Display_Character:7SEG":10,"Display_Character:ALNUM":18,"Socket:DIP":8,"Connector_Generic:Conn":2,"Unknown:GENERIC":2};
+/* 三极管极性（NPN/PNP）识别：只看字符串，不依赖组件对象。
+ * 顺序：明确写 NPN/PNP 字样的优先，其次按常见型号表。
+ * 型号表覆盖直插与贴片的常见对管：S8050/S8550、2N3904/2N3906、
+ * A1015/C1815、BC54x/BC55x、MMBT3904/3906、TIP41/42、2N3055/MJ2955 等。
+ * 注意 2SA…/2SC… 是日系命名：2SA 为 PNP、2SC 为 NPN。
+ * 返回 "pnp" / "npn" / ""（判不出）。只用于显示与归类，
+ * 不参与脚序判定 —— 两种极性的 E/B/C 角色与排布规则完全相同。 */
+function __lcTriPolarityText(s){
+  s=String(s==null?"":s).toUpperCase();
+  if(!s)return"";
+  if(/PNP/.test(s))return"pnp";
+  if(/NPN/.test(s))return"npn";
+  if(/2N3906|2N5401|2N2905|2N403\d|2SA\d{2,4}|A1015|BC55[6-9]|BC32[78]|S?8550|S?9012|MMBT3906|MMBT5401|MJ2955|TIP42/.test(s))return"pnp";
+  if(/2N3904|2N5551|2N222[12A]|2N2219|2N3055|2SC\d{2,4}|C1815|BC54[6-9]|BC33[78]|S?8050|S?9013|MMBT3904|MMBT5551|TIP41/.test(s))return"npn";
+  return"";
+}
 function __lcMSVocab(ref,value,category,pkg){
   var r=String(ref||"").toUpperCase();
   var v=String(value||"").toUpperCase();
@@ -74,7 +90,7 @@ function __lcMSVocab(ref,value,category,pkg){
   if(c.indexOf("CAP")>=0||pre==="C")return"Device:C";
   if(c.indexOf("INDUCTOR")>=0||pre==="L")return"Device:L";
   if(c.indexOf("RESISTOR")>=0||pre==="R")return"Device:R";
-  if(p.indexOf("TO-92")>=0||p.indexOf("TO92")>=0||c.indexOf("BJT")>=0||c.indexOf("TRANSISTOR")>=0||pre==="Q")return"Transistor_BJT:NPN";
+  if(p.indexOf("TO-92")>=0||p.indexOf("TO92")>=0||c.indexOf("BJT")>=0||c.indexOf("TRANSISTOR")>=0||pre==="Q")return __lcTriPolarityText(v+" "+c+" "+p)==="pnp"?"Transistor_BJT:PNP":"Transistor_BJT:NPN";
   if(pre==="U"||pre==="A"||c.indexOf("IC")>=0||c.indexOf("TIMER")>=0||c.indexOf("OPAMP")>=0||c.indexOf("OP-AMP")>=0||c.indexOf("MCU")>=0||/^74/.test(c)||/^40/.test(c)||c.indexOf("LOGIC")>=0||c.indexOf("MIXED")>=0||c.indexOf("ANALOG")>=0)return"Socket:DIP";
   return"Unknown:GENERIC";
 }

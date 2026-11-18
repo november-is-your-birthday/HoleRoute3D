@@ -27,6 +27,7 @@ function grabFn(src, sig) {
 const sandbox = { window: {}, Math, JSON, String, Number, Array, Object, console };
 vm.createContext(sandbox);
 vm.runInContext(
+  grabFn(bundle, 'function __lcTriPolarityText(') +
   grabFn(bundle, 'function __lcEnetCategory(') +
   grabFn(bundle, 'function __lcEnet('),
   sandbox);

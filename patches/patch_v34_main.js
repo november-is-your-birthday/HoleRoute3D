@@ -812,7 +812,8 @@ function __lcEnetCategory(ref, value, fp, n) {
     var isFet = /MOS|FET|2N7\d|IRF|SI23|AO3|BSS|2SK|2SJ/.test(b);
     var small = /SOT|SC-?70|SOT-?23|SOT-?323/.test(b);
     if (isFet && !small) return "Transistor_FET:NMOS";
-    return "Transistor_BJT:NPN";
+    /* BJT 分 NPN / PNP 两类（KiCad 库同名）。极性判不出时按 NPN（与旧版一致）。 */
+    return "Transistor_BJT:" + (__lcTriPolarityText(b) === "pnp" ? "PNP" : "NPN");
   }
   /* 8 脚时 part 就叫 "DIP"，下游 yA() 会按实际脚数补成 DIP8 —— 与 libPart 一致 */
   if (p === "U" || p === "IC") return "Socket:" + (n === 8 ? "DIP" : "DIP" + n);

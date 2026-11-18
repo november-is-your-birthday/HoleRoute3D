@@ -1129,6 +1129,45 @@ src = rep(src,
           'P.jsx(__lcGuideHost,{}),l&&i&&P.jsx(jR,{dragMoveModifier:d.dragMoveModifier',
           'G4 mount tutorial outside project gate')
 
+# =================================================================
+# v3.5.5：元件库三极管区分 NPN/PNP 并补 SOT-23；落板带上 value/footprint
+# 背景：库里的三极管原来只有 TO-92/39/220/3/247 五个「空型号」条目，
+#      既分不出 NPN/PNP，也没有贴片 SOT-23（用户实际在用的封装）。
+#      落板时 value 恒为空，极性信息无处可存。现在按封装 × 极性成对给出
+#      常见对管型号，落板把 value/footprint 一并写进元件，属性面板据此显示极性。
+# =================================================================
+print('== v3.5.5 transistor library NPN/PNP ==')
+OLD_TRI_LIB = (
+    '{kind:"to92",label:"Q",title:"TO-92",pinCount:3,leadSpacing:1,rowSpacing:0,sameSidePitch:1},'
+    '{kind:"to39",label:"Q",title:"TO-39",pinCount:3,leadSpacing:2,rowSpacing:1,sameSidePitch:1},'
+    '{kind:"to220",label:"Q",title:"TO-220",pinCount:3,leadSpacing:1,rowSpacing:0,sameSidePitch:1},'
+    '{kind:"to3",label:"Q",title:"TO-3",pinCount:3,leadSpacing:2,rowSpacing:2,sameSidePitch:1},'
+    '{kind:"to247",label:"Q",title:"TO-247",pinCount:3,leadSpacing:2,rowSpacing:0,sameSidePitch:2}')
+NEW_TRI_LIB = (
+    '{kind:"to92",label:"Q",title:"TO-92 NPN（S8050）",value:"S8050 NPN",footprint:"TO-92",pinCount:3,leadSpacing:1,rowSpacing:0,sameSidePitch:1},'
+    '{kind:"to92",label:"Q",title:"TO-92 PNP（S8550）",value:"S8550 PNP",footprint:"TO-92",pinCount:3,leadSpacing:1,rowSpacing:0,sameSidePitch:1},'
+    '{kind:"to92",label:"Q",title:"SOT-23 NPN（MMBT3904）",value:"MMBT3904 NPN",footprint:"SOT-23",pinCount:3,leadSpacing:1,rowSpacing:0,sameSidePitch:1},'
+    '{kind:"to92",label:"Q",title:"SOT-23 PNP（MMBT3906）",value:"MMBT3906 PNP",footprint:"SOT-23",pinCount:3,leadSpacing:1,rowSpacing:0,sameSidePitch:1},'
+    '{kind:"to39",label:"Q",title:"TO-39 NPN（2N2219）",value:"2N2219 NPN",footprint:"TO-39",pinCount:3,leadSpacing:2,rowSpacing:1,sameSidePitch:1},'
+    '{kind:"to39",label:"Q",title:"TO-39 PNP（2N2905）",value:"2N2905 PNP",footprint:"TO-39",pinCount:3,leadSpacing:2,rowSpacing:1,sameSidePitch:1},'
+    '{kind:"to220",label:"Q",title:"TO-220 NPN（TIP41）",value:"TIP41 NPN",footprint:"TO-220",pinCount:3,leadSpacing:1,rowSpacing:0,sameSidePitch:1},'
+    '{kind:"to220",label:"Q",title:"TO-220 PNP（TIP42）",value:"TIP42 PNP",footprint:"TO-220",pinCount:3,leadSpacing:1,rowSpacing:0,sameSidePitch:1},'
+    '{kind:"to3",label:"Q",title:"TO-3 NPN（2N3055）",value:"2N3055 NPN",footprint:"TO-3",pinCount:3,leadSpacing:2,rowSpacing:2,sameSidePitch:1},'
+    '{kind:"to3",label:"Q",title:"TO-3 PNP（MJ2955）",value:"MJ2955 PNP",footprint:"TO-3",pinCount:3,leadSpacing:2,rowSpacing:2,sameSidePitch:1},'
+    '{kind:"to247",label:"Q",title:"TO-247 NPN（2SC5200）",value:"2SC5200 NPN",footprint:"TO-247",pinCount:3,leadSpacing:2,rowSpacing:0,sameSidePitch:2},'
+    '{kind:"to247",label:"Q",title:"TO-247 PNP（2SA1943）",value:"2SA1943 PNP",footprint:"TO-247",pinCount:3,leadSpacing:2,rowSpacing:0,sameSidePitch:2}')
+src = rep(src, OLD_TRI_LIB, NEW_TRI_LIB, 'T51 library npn/pnp transistor entries')
+
+# 落板时把 value / footprint 一起写进元件：极性靠 value 认、封装族靠 footprint 认。
+src = rep(src, 'value:"",pinCount:Q.pinCount,leadSpacing:Q.leadSpacing',
+          'value:Q.value||"",footprint:Q.footprint||"",pinCount:Q.pinCount,leadSpacing:Q.leadSpacing',
+          'T52 library placement carries value and footprint')
+
+# 库条目键加上 title：否则同封装的 NPN/PNP 两条目键相同（to92:3:Q），地图里互相覆盖。
+src = rep(src, 'function P3(i){return`${i.kind}:${i.pinCount??""}:${i.label}`}',
+          'function P3(i){return`${i.kind}:${i.pinCount??""}:${i.label}:${i.title||""}`}',
+          'T53 unique library keys per entry')
+
 if CHECK_ONLY:
     print('check only, not written')
     raise SystemExit(0)
