@@ -725,6 +725,10 @@ src = rep(src, 'onChange:T=>v({value:T.target.value})})]}),',
 src = rep(src, 'window.__lcProject=i,window.__lcCommit=H;return P.jsxs("div",{className:"app-shell"',
           'window.__lcProject=i,window.__lcCommit=H,window.__lcUnmountAll=__lcUnmountAll;return P.jsxs("div",{className:"app-shell"',
           'M11 expose unmount-all to toolbar')
+# 每次渲染顺手把三极管脚按实物排布校正一次（幂等），保证 3D、孔位、布线三者一致
+src = rep(src, 'window.__lcProject=i,window.__lcCommit=H,window.__lcUnmountAll=__lcUnmountAll;return',
+          'window.__lcProject=i,window.__lcCommit=H,window.__lcUnmountAll=__lcUnmountAll,__lcArrangeAll(i);return',
+          'M12 arrange transistor leads to physical order')
 
 # =================================================================
 # v3.4.0

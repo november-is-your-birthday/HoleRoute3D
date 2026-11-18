@@ -979,6 +979,64 @@ function __lcPickJumper(ev) {
 
 /* 属性面板里的「脚号 → 角色」对照行：让用户能直接拿实物封装图核对。
  * 只列脚号与角色，不列绝对坐标 —— 那个随摆放位置和旋转变化，看着更晕。 */
+/* ---------- 三极管脚按「模型的实际引脚排布」落孔 ----------
+ * 根因：网表的脚号顺序是按符号排的，3D 模型是按实物封装排的，两者可能对不上。
+ * 例：本工程 Q1 的网表是 SOT-23 口径（脚1=B、脚2=E、脚3=C），但 3D 模型是 TO-92，
+ * 而 TO-92 实物的引脚顺序是 E-B-C（平面对自己、引脚朝下，从左到右）—— 基极在中间。
+ * 旧实现按脚号 1/2/3 直接排孔，基极就落在最左边的孔上，和实物差一位，
+ * 表现为「中间才是 B」「模型和引脚定位是错的」。
+ *
+ * 做法：把脚号按角色映射到模型的物理槽位（E 所在的槽位放角色 E 的脚，依此类推）。
+ * 三个孔的集合不变，只重排归属；`position` 同步平移，锚点仍落在脚 1 的孔上，
+ * 所以孔位换算（脚1 为锚点）与 3D 摆放（Ey 减去锚点偏移）都保持一致。
+ * 角色判不出来时（名字只有 1/2/3）不动，交给用户在面板里手选脚序。
+ * 本函数幂等：排好之后再跑一遍不会来回翻。 */
+function __lcArrangeLeads(c) {
+  try {
+    if (!c || !__lcTriKinds[c.kind]) return c;
+    var offs = c.pinOffsets || [];
+    if (offs.length !== 3 || !c.position) return c;
+    var order = String(__lcPinOrderPresets[c.kind] || "").toUpperCase();
+    if (order.length !== 3) return c;
+    var names = __lcPinNamesOf(c);
+    if (!names || names.length !== 3) return c;
+    var i, s, slot = [-1, -1, -1], used = [0, 0, 0];
+    for (i = 0; i < 3; i += 1) {
+      s = order.indexOf(String(names[i] == null ? "" : names[i]).toUpperCase());
+      if (s < 0 || used[s]) return c;
+      used[s] = 1;
+      slot[i] = s;
+    }
+    /* 当前各脚位于哪个物理槽位：偏移沿引脚方向跨度大的那一维排序 */
+    var xs = [], zs = [], k;
+    for (k = 0; k < 3; k += 1) { xs.push(offs[k][0]); zs.push(offs[k][1]); }
+    var byX = (Math.max.apply(null, xs) - Math.min.apply(null, xs)) >=
+              (Math.max.apply(null, zs) - Math.min.apply(null, zs));
+    var ord = [0, 1, 2].sort(function (a, b) {
+      return byX ? (offs[a][0] - offs[b][0]) : (offs[a][1] - offs[b][1]);
+    });
+    var done = true;
+    for (i = 0; i < 3; i += 1) if (ord[slot[i]] !== i) { done = false; break; }
+    if (done) return c;
+    var next = [[0, 0], [0, 0], [0, 0]];
+    for (i = 0; i < 3; i += 1) {
+      next[i] = [offs[ord[slot[i]]][0], offs[ord[slot[i]]][1]];
+    }
+    var d0 = [offs[ord[slot[0]]][0] - offs[0][0], offs[ord[slot[0]]][1] - offs[0][1]];
+    var a = Number(c.rotation) || 0;
+    var ca = Math.round(Math.cos(a)), sa = Math.round(Math.sin(a));
+    c.position = [c.position[0] + d0[0] * ca - d0[1] * sa,
+                  c.position[1] + d0[0] * sa + d0[1] * ca];
+    c.pinOffsets = next;
+  } catch (e) {}
+  return c;
+}
+function __lcArrangeAll(pj) {
+  var cs = (pj && pj.components) || [];
+  for (var i = 0; i < cs.length; i += 1) __lcArrangeLeads(cs[i]);
+  return pj;
+}
+
 /* 脚 i 落在洞洞板的哪一孔：与放置逻辑一致，脚 1 为锚点，其余按旋转后的相对位移推算 */
 function __lcPinHoleOf(c, i) {
   try {
@@ -7276,4 +7334,4 @@ function _t(){__lcMountAll(!0)}function xt(){__lcMountAll(!1)}function Qt(Q){f&&
   setTimeout(function(){__lcToast(msg,4600)},120);
   return{...Q,routing:{...Zt,jumpers:merged,
     warnings:(Zt.warnings||[]).filter(function(x){return String(x).indexOf("继续布线：")<0}).concat([msg])}};
-}catch(err){return{...Q,routing:{...Q.routing,warnings:[...Q.routing.warnings,"继续布线失败："+(err&&err.message?err.message:String(err))]}}}})}window.__lcProject=i,window.__lcCommit=H,window.__lcUnmountAll=__lcUnmountAll;return P.jsxs("div",{className:"app-shell",children:[P.jsx(V3,{projectName:i?.name,theme:d.theme,onToggleTheme:Nt,onNewProject:()=>r(!0),onSaveProject:me,onOpenProject:Ct,onUndo:xe,canUndo:_>0,onOpenSettings:()=>c(!0),onClear:()=>__lcSetClr(!0),toolbar:fe}),P.jsxs("div",{className:i?"main-layout with-sidebar":"main-layout",children:[i&&P.jsx(K3,{project:i,aiAssistant:J,onImportFiles:st,onRemoveImportedFile:vt,onSelectNet:Yt}),P.jsx(IR,{project:i,selectedComponentId:f,onNewProject:()=>r(!0),onPlaceComponent:ht,onSelectComponent:Tt,onSelectPin:R,onMoveComponent:z,onMovePin:te,onUpdateBoard:Wt,onRotateSelected:Gt,onDeleteSelected:Xt,onMountSelected:_t,onUnmountSelected:xt,onUpdateSelected:Qt,highlightedEndpoints:At,routeEditMode:y,isPlacingComponent:!!M,pendingComponent:M,onCancelPlacement:()=>O(void 0),transparentBoard:E,theme:d.theme,onRouteEditPoint:Ut,routeDraftStart:D,onRouteCancel:()=>w(void 0),dragMoveModifier:d.dragMoveModifier})]}),s&&P.jsx(k3,{onCancel:()=>r(!1),onCreate:K}),$.dialogOpen&&i&&P.jsx(XR,{boardWidth:i.board.width,boardHeight:i.board.height,boardKind:i.board.kind??"perfboard",warnings:$.warnings,running:$.running,progress:$.progress,aiAssistant:J,onCancel:$.close,onPlace:$.run}),__lcClr&&i&&P.jsx(__lcClearDialog,{onCancel:()=>__lcSetClr(!1),onConfirm:__lcDoClear}),__lcClrR&&i&&P.jsx(__lcClearRoutesDialog,{onCancel:()=>__lcSetClrR(!1),onConfirm:__lcDoClearRoutes}),P.jsx(__lcGuideHost,{}),l&&i&&P.jsx(jR,{dragMoveModifier:d.dragMoveModifier,shortcuts:d.shortcuts,onUpdate:Q=>g(rt=>({...rt,dragMoveModifier:Q})),onUpdateShortcut:(Q,rt)=>g(at=>({...at,shortcuts:{...at.shortcuts,[Q]:rt}})),onClose:()=>c(!1)})]})}function jO(i,t,e,s){if(s){const l=t.find(f=>f.id===s.componentId),c=l?i.find(f=>f.ref===l.name&&f.pin===s.pin):void 0;return c?i.filter(f=>f.net===c.net):[]}const r=new Map;return i.forEach(l=>{l.net===e&&r.set(`${l.net}:${l.ref}:${l.pin}:${l.grid[0]},${l.grid[1]}`,l)}),[...r.values()]}function YO(i,t){if(!t||t==="None")return!1;const e=t.split("+"),s=e.at(-1),r=e.includes("Ctrl"),l=e.includes("Alt"),c=e.includes("Shift"),f=e.includes("Meta");return i.ctrlKey!==r||i.altKey!==l||i.shiftKey!==c||i.metaKey!==f||!s?!1:s.length===1?i.key.toLowerCase()===s.toLowerCase():WO(i.key)===s}function WO(i){return i===" "?"Space":i}function QO(i){return i instanceof HTMLElement?["INPUT","TEXTAREA","SELECT"].includes(i.tagName)||i.isContentEditable:!1}function ri(i,t,e){return{shortcut:i,enabled:t,run:e}}function qO(i,t){return`${i.replace(/[^A-Za-z]/g,"")||"U"}${t}`}function KO(i,t){return i[0]===t[0]||i[1]===t[1]?Dr([i,t]):Dr([i,[t[0],i[1]],t])}function ZO(i,t){const e=[];let s=!1;for(const r of i){if(s){e.push(r);continue}const l=JO(r.points,t);if(!l){e.push(r);continue}s=!0;const c=r.points.slice(0,l.startIndex+1),f=r.points.slice(l.endIndex);c.length>=2&&e.push({...r,id:crypto.randomUUID(),points:c}),f.length>=2&&e.push({...r,id:crypto.randomUUID(),points:f})}return{traces:e,removed:s}}function JO(i,t){for(let e=0;e<i.length-1;e+=1){const s=i[e],r=i[e+1];if(!$O(t,s,r))continue;let l=e,c=e+1;for(;l>0&&q2(i[l-1],i[l],s,r);)l-=1;for(;c<i.length-1&&q2(i[c],i[c+1],s,r);)c+=1;return{startIndex:l,endIndex:c}}}function $O(i,t,e){return t[0]===e[0]?i[0]===t[0]&&i[1]>=Math.min(t[1],e[1])&&i[1]<=Math.max(t[1],e[1]):t[1]===e[1]?i[1]===t[1]&&i[0]>=Math.min(t[0],e[0])&&i[0]<=Math.max(t[0],e[0]):!1}function q2(i,t,e,s){const r=e[1]===s[1],l=e[0]===s[0];return r?i[1]===e[1]&&t[1]===e[1]:l?i[0]===e[0]&&t[0]===e[0]:!1}function om(i,t){return i[0]===t[0]&&i[1]===t[1]}function K2(i,t){if((i.board.kind??"perfboard")!=="breadboard")return t;const e=Zi(i.board),s=new Set;i.components.forEach(h=>E0(h).forEach(([d,g])=>s.add(`${d},${g}`))),i.routing.jumpers.forEach(h=>{s.add(`${h.from[0]},${h.from[1]}`),s.add(`${h.to[0]},${h.to[1]}`)});const r=`${t[0]},${t[1]}`;if(!s.has(r))return t;const l=e.getElectricalNode(t);if(!l)return;let c,f=Number.POSITIVE_INFINITY;return e.getAllHoles().forEach(h=>{if(e.getElectricalNode(h.id)!==l)return;const d=`${h.grid[0]},${h.grid[1]}`;if(s.has(d))return;const g=Math.abs(h.grid[0]-t[0])+Math.abs(h.grid[1]-t[1]);g<f&&(f=g,c=h.grid)}),c}JM.createRoot(document.getElementById("root")).render(P.jsx(XM.StrictMode,{children:P.jsx(XO,{})}));
+}catch(err){return{...Q,routing:{...Q.routing,warnings:[...Q.routing.warnings,"继续布线失败："+(err&&err.message?err.message:String(err))]}}}})}window.__lcProject=i,window.__lcCommit=H,window.__lcUnmountAll=__lcUnmountAll,__lcArrangeAll(i);return P.jsxs("div",{className:"app-shell",children:[P.jsx(V3,{projectName:i?.name,theme:d.theme,onToggleTheme:Nt,onNewProject:()=>r(!0),onSaveProject:me,onOpenProject:Ct,onUndo:xe,canUndo:_>0,onOpenSettings:()=>c(!0),onClear:()=>__lcSetClr(!0),toolbar:fe}),P.jsxs("div",{className:i?"main-layout with-sidebar":"main-layout",children:[i&&P.jsx(K3,{project:i,aiAssistant:J,onImportFiles:st,onRemoveImportedFile:vt,onSelectNet:Yt}),P.jsx(IR,{project:i,selectedComponentId:f,onNewProject:()=>r(!0),onPlaceComponent:ht,onSelectComponent:Tt,onSelectPin:R,onMoveComponent:z,onMovePin:te,onUpdateBoard:Wt,onRotateSelected:Gt,onDeleteSelected:Xt,onMountSelected:_t,onUnmountSelected:xt,onUpdateSelected:Qt,highlightedEndpoints:At,routeEditMode:y,isPlacingComponent:!!M,pendingComponent:M,onCancelPlacement:()=>O(void 0),transparentBoard:E,theme:d.theme,onRouteEditPoint:Ut,routeDraftStart:D,onRouteCancel:()=>w(void 0),dragMoveModifier:d.dragMoveModifier})]}),s&&P.jsx(k3,{onCancel:()=>r(!1),onCreate:K}),$.dialogOpen&&i&&P.jsx(XR,{boardWidth:i.board.width,boardHeight:i.board.height,boardKind:i.board.kind??"perfboard",warnings:$.warnings,running:$.running,progress:$.progress,aiAssistant:J,onCancel:$.close,onPlace:$.run}),__lcClr&&i&&P.jsx(__lcClearDialog,{onCancel:()=>__lcSetClr(!1),onConfirm:__lcDoClear}),__lcClrR&&i&&P.jsx(__lcClearRoutesDialog,{onCancel:()=>__lcSetClrR(!1),onConfirm:__lcDoClearRoutes}),P.jsx(__lcGuideHost,{}),l&&i&&P.jsx(jR,{dragMoveModifier:d.dragMoveModifier,shortcuts:d.shortcuts,onUpdate:Q=>g(rt=>({...rt,dragMoveModifier:Q})),onUpdateShortcut:(Q,rt)=>g(at=>({...at,shortcuts:{...at.shortcuts,[Q]:rt}})),onClose:()=>c(!1)})]})}function jO(i,t,e,s){if(s){const l=t.find(f=>f.id===s.componentId),c=l?i.find(f=>f.ref===l.name&&f.pin===s.pin):void 0;return c?i.filter(f=>f.net===c.net):[]}const r=new Map;return i.forEach(l=>{l.net===e&&r.set(`${l.net}:${l.ref}:${l.pin}:${l.grid[0]},${l.grid[1]}`,l)}),[...r.values()]}function YO(i,t){if(!t||t==="None")return!1;const e=t.split("+"),s=e.at(-1),r=e.includes("Ctrl"),l=e.includes("Alt"),c=e.includes("Shift"),f=e.includes("Meta");return i.ctrlKey!==r||i.altKey!==l||i.shiftKey!==c||i.metaKey!==f||!s?!1:s.length===1?i.key.toLowerCase()===s.toLowerCase():WO(i.key)===s}function WO(i){return i===" "?"Space":i}function QO(i){return i instanceof HTMLElement?["INPUT","TEXTAREA","SELECT"].includes(i.tagName)||i.isContentEditable:!1}function ri(i,t,e){return{shortcut:i,enabled:t,run:e}}function qO(i,t){return`${i.replace(/[^A-Za-z]/g,"")||"U"}${t}`}function KO(i,t){return i[0]===t[0]||i[1]===t[1]?Dr([i,t]):Dr([i,[t[0],i[1]],t])}function ZO(i,t){const e=[];let s=!1;for(const r of i){if(s){e.push(r);continue}const l=JO(r.points,t);if(!l){e.push(r);continue}s=!0;const c=r.points.slice(0,l.startIndex+1),f=r.points.slice(l.endIndex);c.length>=2&&e.push({...r,id:crypto.randomUUID(),points:c}),f.length>=2&&e.push({...r,id:crypto.randomUUID(),points:f})}return{traces:e,removed:s}}function JO(i,t){for(let e=0;e<i.length-1;e+=1){const s=i[e],r=i[e+1];if(!$O(t,s,r))continue;let l=e,c=e+1;for(;l>0&&q2(i[l-1],i[l],s,r);)l-=1;for(;c<i.length-1&&q2(i[c],i[c+1],s,r);)c+=1;return{startIndex:l,endIndex:c}}}function $O(i,t,e){return t[0]===e[0]?i[0]===t[0]&&i[1]>=Math.min(t[1],e[1])&&i[1]<=Math.max(t[1],e[1]):t[1]===e[1]?i[1]===t[1]&&i[0]>=Math.min(t[0],e[0])&&i[0]<=Math.max(t[0],e[0]):!1}function q2(i,t,e,s){const r=e[1]===s[1],l=e[0]===s[0];return r?i[1]===e[1]&&t[1]===e[1]:l?i[0]===e[0]&&t[0]===e[0]:!1}function om(i,t){return i[0]===t[0]&&i[1]===t[1]}function K2(i,t){if((i.board.kind??"perfboard")!=="breadboard")return t;const e=Zi(i.board),s=new Set;i.components.forEach(h=>E0(h).forEach(([d,g])=>s.add(`${d},${g}`))),i.routing.jumpers.forEach(h=>{s.add(`${h.from[0]},${h.from[1]}`),s.add(`${h.to[0]},${h.to[1]}`)});const r=`${t[0]},${t[1]}`;if(!s.has(r))return t;const l=e.getElectricalNode(t);if(!l)return;let c,f=Number.POSITIVE_INFINITY;return e.getAllHoles().forEach(h=>{if(e.getElectricalNode(h.id)!==l)return;const d=`${h.grid[0]},${h.grid[1]}`;if(s.has(d))return;const g=Math.abs(h.grid[0]-t[0])+Math.abs(h.grid[1]-t[1]);g<f&&(f=g,c=h.grid)}),c}JM.createRoot(document.getElementById("root")).render(P.jsx(XM.StrictMode,{children:P.jsx(XO,{})}));

@@ -244,6 +244,64 @@ function __lcPickJumper(ev) {
 
 /* 属性面板里的「脚号 → 角色」对照行：让用户能直接拿实物封装图核对。
  * 只列脚号与角色，不列绝对坐标 —— 那个随摆放位置和旋转变化，看着更晕。 */
+/* ---------- 三极管脚按「模型的实际引脚排布」落孔 ----------
+ * 根因：网表的脚号顺序是按符号排的，3D 模型是按实物封装排的，两者可能对不上。
+ * 例：本工程 Q1 的网表是 SOT-23 口径（脚1=B、脚2=E、脚3=C），但 3D 模型是 TO-92，
+ * 而 TO-92 实物的引脚顺序是 E-B-C（平面对自己、引脚朝下，从左到右）—— 基极在中间。
+ * 旧实现按脚号 1/2/3 直接排孔，基极就落在最左边的孔上，和实物差一位，
+ * 表现为「中间才是 B」「模型和引脚定位是错的」。
+ *
+ * 做法：把脚号按角色映射到模型的物理槽位（E 所在的槽位放角色 E 的脚，依此类推）。
+ * 三个孔的集合不变，只重排归属；`position` 同步平移，锚点仍落在脚 1 的孔上，
+ * 所以孔位换算（脚1 为锚点）与 3D 摆放（Ey 减去锚点偏移）都保持一致。
+ * 角色判不出来时（名字只有 1/2/3）不动，交给用户在面板里手选脚序。
+ * 本函数幂等：排好之后再跑一遍不会来回翻。 */
+function __lcArrangeLeads(c) {
+  try {
+    if (!c || !__lcTriKinds[c.kind]) return c;
+    var offs = c.pinOffsets || [];
+    if (offs.length !== 3 || !c.position) return c;
+    var order = String(__lcPinOrderPresets[c.kind] || "").toUpperCase();
+    if (order.length !== 3) return c;
+    var names = __lcPinNamesOf(c);
+    if (!names || names.length !== 3) return c;
+    var i, s, slot = [-1, -1, -1], used = [0, 0, 0];
+    for (i = 0; i < 3; i += 1) {
+      s = order.indexOf(String(names[i] == null ? "" : names[i]).toUpperCase());
+      if (s < 0 || used[s]) return c;
+      used[s] = 1;
+      slot[i] = s;
+    }
+    /* 当前各脚位于哪个物理槽位：偏移沿引脚方向跨度大的那一维排序 */
+    var xs = [], zs = [], k;
+    for (k = 0; k < 3; k += 1) { xs.push(offs[k][0]); zs.push(offs[k][1]); }
+    var byX = (Math.max.apply(null, xs) - Math.min.apply(null, xs)) >=
+              (Math.max.apply(null, zs) - Math.min.apply(null, zs));
+    var ord = [0, 1, 2].sort(function (a, b) {
+      return byX ? (offs[a][0] - offs[b][0]) : (offs[a][1] - offs[b][1]);
+    });
+    var done = true;
+    for (i = 0; i < 3; i += 1) if (ord[slot[i]] !== i) { done = false; break; }
+    if (done) return c;
+    var next = [[0, 0], [0, 0], [0, 0]];
+    for (i = 0; i < 3; i += 1) {
+      next[i] = [offs[ord[slot[i]]][0], offs[ord[slot[i]]][1]];
+    }
+    var d0 = [offs[ord[slot[0]]][0] - offs[0][0], offs[ord[slot[0]]][1] - offs[0][1]];
+    var a = Number(c.rotation) || 0;
+    var ca = Math.round(Math.cos(a)), sa = Math.round(Math.sin(a));
+    c.position = [c.position[0] + d0[0] * ca - d0[1] * sa,
+                  c.position[1] + d0[0] * sa + d0[1] * ca];
+    c.pinOffsets = next;
+  } catch (e) {}
+  return c;
+}
+function __lcArrangeAll(pj) {
+  var cs = (pj && pj.components) || [];
+  for (var i = 0; i < cs.length; i += 1) __lcArrangeLeads(cs[i]);
+  return pj;
+}
+
 /* 脚 i 落在洞洞板的哪一孔：与放置逻辑一致，脚 1 为锚点，其余按旋转后的相对位移推算 */
 function __lcPinHoleOf(c, i) {
   try {
