@@ -336,6 +336,54 @@ function __lcCathodeIndex(names) {
   }
   return 0;
 }
+/* 按网络名取网络对象 */
+function __lcNetByName(nm) {
+  if (!nm) return null;
+  try {
+    var pj = window.__lcProject || {};
+    var nets = (pj.importState && pj.importState.nets) || pj.nets || [];
+    for (var i = 0; i < nets.length; i += 1) {
+      if (String(nets[i].name) === String(nm)) return nets[i];
+    }
+  } catch (e) {}
+  return null;
+}
+/* 该网络是不是「低到地」：本身就是 GND，或只隔一颗电阻就到 GND。
+ * 后者是限流电阻接在 LED 负极侧的常见画法（本工程：10 颗 LED 的脚 2 并接后经 R5 到 GND）。 */
+function __lcNetToGnd(net) {
+  if (!net) return false;
+  if (/GND|VSS|^0V$/i.test(String(net.name || ""))) return true;
+  var nds = net.nodes || [];
+  for (var i = 0; i < nds.length; i += 1) {
+    var r = String(nds[i].ref || "");
+    if (!/^R\d/i.test(r)) continue;
+    var other = String(nds[i].pin) === "1" ? "2" : "1";
+    var nm = __lcPinNetOf(r, other);
+    if (nm && nm !== String(net.name) && /GND|VSS|^0V$/i.test(nm)) return true;
+  }
+  return false;
+}
+/* LED 的负极脚（0 基索引）：电路拓扑优先，引脚名兜底。
+ * 为什么不能只看引脚名：立创部分 LED 符号的 C/A 名字与封装焊盘对不上。
+ * 例：LED_TH-R_3mm 的 .enet 写 pin1 name=C，但该脚接的是 CD4017 的输出，
+ * pin2 才是 10 颗 LED 共用、经 R5 到 GND 的一侧 —— 显然 pin2 才是负极。
+ * 因此只在「一侧确定到 GND / 接电源、另一侧不是」这种可判定的情况下覆盖引脚名，
+ * 两侧都判不出来时退回 __lcCathodeIndex（引脚名 → 脚号约定）。 */
+function __lcLedCathodeIndex(ref, names, n) {
+  try {
+    if (n === 2 && ref) {
+      var a = __lcNetByName(__lcPinNetOf(ref, 1));
+      var b = __lcNetByName(__lcPinNetOf(ref, 2));
+      var ga = __lcNetToGnd(a), gb = __lcNetToGnd(b);
+      if (ga !== gb) return gb ? 1 : 0;
+      var va = !!(a && /VCC|VDD|^\+/i.test(String(a.name || "")));
+      var vb = !!(b && /VCC|VDD|^\+/i.test(String(b.name || "")));
+      if (va !== vb) return va ? 1 : 0;
+    }
+  } catch (e) {}
+  return __lcCathodeIndex(names);
+}
+
 /* 标记用的黑：纯黑（0x000000）在深色本体上会糊成一片，这里用近黑 + 一点金属度，
  * 靠圆柱面的高光和几何凸出的轮廓把「环」显出来。 */
 function __lcInkBlack(rough) {

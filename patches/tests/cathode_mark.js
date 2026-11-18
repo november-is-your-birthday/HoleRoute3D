@@ -37,8 +37,7 @@ assert(idx(['k', 'a']) === 0, '小写 k/a 也认');
 assert(idx(['1', '2']) === 0, '导入器合成脚号时按约定取脚 1');
 assert(idx([]) === 0, '没有引脚名时取脚 1');
 assert(idx(null) === 0, 'null 不抛异常');
-assert(idx(['C', 'A']) === 0, 'C（阴极）同样认作负极');
-assert(idx(['A', 'C']) === 1, 'A 在前时取另一只脚');
+assert(idx(['C', 'A']) === 0, 'C（阴极）同样认作负极');assert(idx(['A', 'C']) === 1, 'A 在前时取另一只脚');
 
 /* ---------- 2) 静态接线 ---------- */
 assert(bundle.indexOf('function __lcCathodeIndex(') >= 0, '存在负极判定函数');
@@ -50,21 +49,75 @@ assert(markCount === 2, '二极管与 LED 各生成一处负极标记（实际 '
 
 assert(bundle.indexOf('diode:i=>IP(i.label??"D",hn(i),i.pinNames)') >= 0,
   '二极管分派把 pinNames 传进 IP（否则无法判断 A/K）');
-assert(bundle.indexOf('led:i=>UP(i.color??15220543,hn(i),i.pinNames)') >= 0,
-  'LED 分派原本就传 pinNames');
+assert(bundle.indexOf('led:i=>UP(i.color??15220543,hn(i),i.pinNames,i.ref)') >= 0,
+  'LED 分派把 pinNames 与位号 ref 一起传进 UP（拓扑判定要用 ref）');
 
 // 二极管环：比本体（0.42）粗，且落在 K 端（dir 由 __lcCathodeIndex 决定）
 assert(bundle.indexOf('ze(.472,.472,.2,28)') >= 0, '二极管环带直径大于本体、有明显宽度');
 assert(bundle.indexOf('dir=__lcCathodeIndex(names)===0?-1:1') >= 0, '环的位置由负极脚决定');
 assert(bundle.indexOf('ze(.478,.478,.009,28)') >= 0, '环带两侧有细银边（深色本体上才分得清）');
 
-// LED 环：整圈套在底座（0.74）外侧
-assert(bundle.indexOf('ze(.752,.752,.075,32)') >= 0, 'LED 环带套在底座外圈');
-assert(bundle.indexOf('bar.userData.__lcCathodeMark') < 0, '旧的白/黑竖线实现已移除');
+// LED 竖线：只在 K 侧，带方向；整圈环无方向信息，已移除
+assert(bundle.indexOf('const ki=__lcLedCathodeIndex(ref,names,t.length)') >= 0,
+  'LED 竖线位置由 __lcLedCathodeIndex（拓扑优先）决定');
+assert(bundle.indexOf('bar.userData.__lcCathodeMark=1') >= 0, 'LED 生成 K 侧黑色竖线');
+assert(bundle.indexOf('ze(.752,.752,.075,32)') < 0, '整圈黑环已移除（360° 对称，无法表示方向）');
 
 // 旧的白色条不能复活：它埋在底座内部（半径 0.74 内），等于没有标记
 assert(bundle.indexOf('color:16777215})') < 0 || bundle.indexOf('__lcLedBar') < 0,
   '旧的白色阴极条已移除');
+
+/* ---------- 3) LED 负极：电路拓扑优先于符号引脚名 ----------
+   真实工程（Netlist_Schematic2）：U2=CD4017，十个输出分别接 LED 的脚 1；
+   十颗 LED 的脚 2 并接到 $1N37，再经 R5 到 GND。
+   所以脚 2 才是负极 —— 尽管 .enet 里 pin1 的符号名叫 C。 */
+const t2 = { String, Array, Math, Object, console, window: {} };
+vm.createContext(t2);
+vm.runInContext(
+  grabFn(bundle, 'function __lcCathodeIndex(') +
+  grabFn(bundle, 'function __lcPinNetOf(') +
+  grabFn(bundle, 'function __lcNetByName(') +
+  grabFn(bundle, 'function __lcNetToGnd(') +
+  grabFn(bundle, 'function __lcLedCathodeIndex('), t2);
+const mkProj = (nets) => ({ importState: { nets } });
+const N = (name, nodes) => ({ name, nodes: nodes.map(([ref, pin]) => ({ ref, pin: String(pin) })) });
+
+/* 本工程拓扑：脚 2 经 R5 到 GND → 脚 2 是负极 */
+t2.window.__lcProject = mkProj([
+  N('$1N36', [['U2', 1], ['LED1', 1]]),
+  N('$1N37', [['LED1', 2], ['LED2', 2], ['R5', 2]]),
+  N('GND', [['R5', 1], ['U2', 8]])
+]);
+const ledIdx = (ref, names, n) => vm.runInContext(
+  '__lcLedCathodeIndex(__r,__n,__c)', Object.assign(t2, { __r: ref, __n: names, __c: n }));
+assert(ledIdx('LED1', ['1', '2'], 2) === 1,
+  '限流电阻在脚 2 侧到 GND → 脚 2 是负极（覆盖符号名）');
+assert(ledIdx('LED1', ['C', 'A'], 2) === 1,
+  '即使符号把脚 1 叫 C，拓扑仍能纠正为脚 2');
+assert(ledIdx('LED2', ['1', '2'], 2) === 1, '同网络的其它 LED 同样判定');
+
+/* 负极直接接 GND 的情形 */
+t2.window.__lcProject = mkProj([
+  N('NET_A', [['U1', 3], ['D1', 1]]),
+  N('GND', [['D1', 2]])
+]);
+assert(ledIdx('D1', ['1', '2'], 2) === 1, '一脚直接落 GND → 该脚是负极');
+
+/* 共阳极到 +5V：接电源的是阳极，另一脚才是负极 */
+t2.window.__lcProject = mkProj([
+  N('+5V', [['LED3', 1]]),
+  N('NET_K', [['LED3', 2], ['U1', 5]])
+]);
+assert(ledIdx('LED3', ['1', '2'], 2) === 1, '共阳极：接 +5V 的是阳极，另一脚为负极');
+
+/* 判不出来时退回引脚名，不硬猜 */
+t2.window.__lcProject = mkProj([
+  N('N1', [['LED4', 1], ['U1', 1]]),
+  N('N2', [['LED4', 2], ['U1', 2]])
+]);
+assert(ledIdx('LED4', ['A', 'K'], 2) === 1, '拓扑不可判定时按引脚名 A/K');
+assert(ledIdx('LED4', ['K', 'A'], 2) === 0, '拓扑不可判定时按引脚名 K/A');
+assert(ledIdx('LED4', ['1', '2'], 2) === 0, '拓扑与引脚名都没有时退回脚 1 约定');
 
 console.log(res.join('\n'));
 console.log(res.every((r) => r.startsWith('PASS')) ? 'ALL PASS' : 'HAS FAILURES');

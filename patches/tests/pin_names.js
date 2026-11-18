@@ -120,7 +120,7 @@ assert(eq(plan('led', { 1: { name: 'K' }, 2: { name: 'A' } }, null, 2), ['K', 'A
 
 // 8) 3D 建模真的用上了这些名字
 assert(bundle.indexOf('to92:i=>GP(i.label??"Q",hn(i),i.pinNames)') >= 0, 'to92 分派把 pinNames 传进 GP');
-assert(bundle.indexOf('led:i=>UP(i.color??15220543,hn(i),i.pinNames)') >= 0, 'led 分派把 pinNames 传进 UP');
+assert(bundle.indexOf('led:i=>UP(i.color??15220543,hn(i),i.pinNames,i.ref)') >= 0, 'led 分派把 pinNames 与位号 ref 传进 UP');
 ['to39:zP', 'to220:FP', 'to3:tR', 'to247:eR'].forEach(pair => {
   const [k, fn] = pair.split(':');
   assert(bundle.indexOf(k + ':i=>' + fn + '(i.label??"Q",hn(i),i.pinNames)') >= 0,

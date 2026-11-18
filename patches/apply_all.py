@@ -592,10 +592,10 @@ src = rep_fn(src, 'function __lcContinueRoute(){', NEW_CONT, 'R8 continue route 
 # ---------------------------------------------------------------
 src = rep(src, 'OP({kind:c.kind,label:c.label,pinCount:c.pinCount,pinOffsets:c.pinOffsets,isFallback:c.isFallback})',
           'OP({kind:c.kind,label:c.label,pinCount:c.pinCount,pinOffsets:c.pinOffsets,isFallback:c.isFallback,'
-          'pinNames:__lcPinNamesOf(c)})',
+          'pinNames:__lcPinNamesOf(c),ref:c.name})',
           'P1 pass pin names into builder')
 src = rep(src, 'to92:i=>GP(i.label??"Q",hn(i))', 'to92:i=>GP(i.label??"Q",hn(i),i.pinNames)', 'P2 to92 pin names')
-src = rep(src, 'led:i=>UP(i.color??15220543,hn(i))', 'led:i=>UP(i.color??15220543,hn(i),i.pinNames)', 'P3 led pin names')
+src = rep(src, 'led:i=>UP(i.color??15220543,hn(i))', 'led:i=>UP(i.color??15220543,hn(i),i.pinNames,i.ref)', 'P3 led pin names')
 
 NEW_GP = '''function GP(i,t,names){
   const e=new Re,s=W0(t),r=new qx;
@@ -973,21 +973,29 @@ src = rep_fn(src, 'function IP(i,t){const e=dy(i,Ne.diodeBody,.42,1.85,!1,t)',
 src = rep(src, 'diode:i=>IP(i.label??"D",hn(i))',
           'diode:i=>IP(i.label??"D",hn(i),i.pinNames)', 'Z2 diode dispatch passes pinNames')
 
-NEW_UP = '''function UP(i,t,names){
+NEW_UP = '''function UP(i,t,names,ref){
   const e=new Re,[s,r]=Qa(t),l=(s[0]+r[0])/2,c=(s[1]+r[1])/2,
     f=new Pe({color:i,roughness:.12,transparent:!0,opacity:.72}),
     h=new Vt(new Ki(.72,28,16),f);h.scale.y=.85,h.position.set(l,1.65,c),e.add(h);
   const d=new Vt(new ze(.74,.74,.24,28),f);d.position.set(l,.98,c),e.add(d);
   Y0(e,[s,r],[l,c],.74,.88,.98);
   if(t.length>=2){
-    /* 负极标记：绕底座一整圈的黑色环带。
-       原先试过「竖线」，但线只朝向一侧，相机转到背面就看不见；
-       环在任意角度都成立，而且和二极管那边（也是环）保持一致。
-       底座半径 0.74，环放在 0.752 的外侧。 */
-    const ring=new Vt(new ze(.752,.752,.075,32),__lcInkBlack(.5));
-    ring.position.set(l,1.02,c);
-    ring.userData.__lcCathodeMark=1;
-    e.add(ring)
+    /* 负极标记：只在 K 侧的一条黑色竖线，不再是整圈环。
+       整圈环 360° 对称，只能说明「有阴极」、说明不了「阴极在哪侧」；
+       竖线贴在 K 脚那一侧，方向一眼可见，对应实物 5mm LED 负极侧的平切面。
+       负极脚由 __lcLedCathodeIndex 判定：先看电路拓扑（哪侧经电阻到 GND），
+       再退回引脚名 —— 立创部分 LED 符号的 C/A 名字与焊盘对不上，不能盲信。
+       半径取 0.72：底座半径 0.74、球顶在 y=1.3 处截面约 0.66，
+       线既不会被半透明壳吃掉，也不会明显悬空。 */
+    const ki=__lcLedCathodeIndex(ref,names,t.length),
+      kp=t[Math.min(ki,t.length-1)]||[l,c],
+      vx=kp[0]-l,vz=kp[1]-c,
+      vl=Math.hypot(vx,vz)||1;
+    const bar=new Vt(new on(.12,.78,.08),__lcInkBlack(.5));
+    bar.position.set(l+vx/vl*.72,1.3,c+vz/vl*.72);
+    bar.rotation.y=Math.atan2(vx/vl,vz/vl);
+    bar.userData.__lcCathodeMark=1;
+    e.add(bar)
   }
   t.forEach(function(pr,idx){
     const nm=names&&names[idx]?String(names[idx]):"";
