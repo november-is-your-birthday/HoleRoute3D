@@ -166,17 +166,20 @@ assert(enCat('Q1', 'S8050_SOT_NPN', 'S8050_SOT-23', 3) === 'Transistor_BJT:NPN',
 assert(enCat('Q6', '2SK3018', 'SOT-323-3', 3) === 'Transistor_BJT:NPN', '小信号 MOS 分类不变');
 assert(enCat('Q5', 'IRF540N', 'TO-220', 3) === 'Transistor_FET:NMOS', '功率 MOS 分类不变');
 
-/* ---------- 6) 元件库：NPN/PNP 成对 + SOT-23，落板带上 value/footprint ---------- */
+/* ---------- 6) 元件库只保留 SOT-23 NPN/PNP，落板带上 value/footprint ---------- */
 const libTitles = [];
 {
   const m = bundle.match(/title:"(?:TO-92|SOT-23|TO-39|TO-220|TO-3|TO-247)[^"]*"/g) || [];
   for (const t of m) if (/NPN|PNP/.test(t)) libTitles.push(t);
 }
-['TO-92 NPN（S8050）', 'TO-92 PNP（S8550）', 'SOT-23 NPN（MMBT3904）', 'SOT-23 PNP（MMBT3906）',
- 'TO-39 NPN（2N2219）', 'TO-39 PNP（2N2905）', 'TO-220 NPN（TIP41）', 'TO-220 PNP（TIP42）',
- 'TO-3 NPN（2N3055）', 'TO-3 PNP（MJ2955）', 'TO-247 NPN（2SC5200）', 'TO-247 PNP（2SA1943）']
+['SOT-23 NPN（MMBT3904）', 'SOT-23 PNP（MMBT3906）']
   .forEach(t => assert(bundle.indexOf('title:"' + t + '"') >= 0, '元件库有条目：' + t));
-assert(libTitles.length === 12, '库里的三极管条目一共 12 条（实际 ' + libTitles.length + '）');
+assert(libTitles.length === 2, '库里只保留两条三极管条目（实际 ' + libTitles.length + '）');
+assert(bundle.indexOf('title:"TO-92 NPN') < 0 && bundle.indexOf('title:"TO-92 PNP') < 0,
+  '已移除 TO-92 库条目');
+assert(bundle.indexOf('title:"TO-39 NPN') < 0 && bundle.indexOf('title:"TO-220 NPN') < 0 &&
+       bundle.indexOf('title:"TO-3 NPN') < 0 && bundle.indexOf('title:"TO-247 NPN') < 0,
+  '已移除其余封装库条目');
 assert(bundle.indexOf('title:"TO-92",pinCount:3') < 0, '旧的「空型号」TO-92 条目已替换');
 assert(bundle.indexOf('value:Q.value||""') >= 0, '落板把库条目的 value 写进元件');
 assert(bundle.indexOf('footprint:Q.footprint||""') >= 0, '落板把库条目的 footprint 写进元件');

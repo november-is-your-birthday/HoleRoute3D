@@ -1130,13 +1130,12 @@ src = rep(src,
           'G4 mount tutorial outside project gate')
 
 # =================================================================
-# v3.5.5：元件库三极管区分 NPN/PNP 并补 SOT-23；落板带上 value/footprint
+# 元件库三极管按用户要求只保留两种最常用的 SOT-23 条目
 # 背景：库里的三极管原来只有 TO-92/39/220/3/247 五个「空型号」条目，
-#      既分不出 NPN/PNP，也没有贴片 SOT-23（用户实际在用的封装）。
-#      落板时 value 恒为空，极性信息无处可存。现在按封装 × 极性成对给出
-#      常见对管型号，落板把 value/footprint 一并写进元件，属性面板据此显示极性。
+#      后来扩为 6 类封装 × NPN/PNP 共 12 条，实际使用以 SOT-23 为主。
+#      为降低选择成本，现在只保留 SOT-23 NPN / PNP 两条；导入的其他封装仍可识别。
 # =================================================================
-print('== v3.5.5 transistor library NPN/PNP ==')
+print('== transistor library: SOT-23 NPN/PNP only ==')
 OLD_TRI_LIB = (
     '{kind:"to92",label:"Q",title:"TO-92",pinCount:3,leadSpacing:1,rowSpacing:0,sameSidePitch:1},'
     '{kind:"to39",label:"Q",title:"TO-39",pinCount:3,leadSpacing:2,rowSpacing:1,sameSidePitch:1},'
@@ -1144,18 +1143,8 @@ OLD_TRI_LIB = (
     '{kind:"to3",label:"Q",title:"TO-3",pinCount:3,leadSpacing:2,rowSpacing:2,sameSidePitch:1},'
     '{kind:"to247",label:"Q",title:"TO-247",pinCount:3,leadSpacing:2,rowSpacing:0,sameSidePitch:2}')
 NEW_TRI_LIB = (
-    '{kind:"to92",label:"Q",title:"TO-92 NPN（S8050）",value:"S8050 NPN",footprint:"TO-92",pinCount:3,leadSpacing:1,rowSpacing:0,sameSidePitch:1},'
-    '{kind:"to92",label:"Q",title:"TO-92 PNP（S8550）",value:"S8550 PNP",footprint:"TO-92",pinCount:3,leadSpacing:1,rowSpacing:0,sameSidePitch:1},'
     '{kind:"to92",label:"Q",title:"SOT-23 NPN（MMBT3904）",value:"MMBT3904 NPN",footprint:"SOT-23",pinCount:3,leadSpacing:1,rowSpacing:0,sameSidePitch:1},'
-    '{kind:"to92",label:"Q",title:"SOT-23 PNP（MMBT3906）",value:"MMBT3906 PNP",footprint:"SOT-23",pinCount:3,leadSpacing:1,rowSpacing:0,sameSidePitch:1},'
-    '{kind:"to39",label:"Q",title:"TO-39 NPN（2N2219）",value:"2N2219 NPN",footprint:"TO-39",pinCount:3,leadSpacing:2,rowSpacing:1,sameSidePitch:1},'
-    '{kind:"to39",label:"Q",title:"TO-39 PNP（2N2905）",value:"2N2905 PNP",footprint:"TO-39",pinCount:3,leadSpacing:2,rowSpacing:1,sameSidePitch:1},'
-    '{kind:"to220",label:"Q",title:"TO-220 NPN（TIP41）",value:"TIP41 NPN",footprint:"TO-220",pinCount:3,leadSpacing:1,rowSpacing:0,sameSidePitch:1},'
-    '{kind:"to220",label:"Q",title:"TO-220 PNP（TIP42）",value:"TIP42 PNP",footprint:"TO-220",pinCount:3,leadSpacing:1,rowSpacing:0,sameSidePitch:1},'
-    '{kind:"to3",label:"Q",title:"TO-3 NPN（2N3055）",value:"2N3055 NPN",footprint:"TO-3",pinCount:3,leadSpacing:2,rowSpacing:2,sameSidePitch:1},'
-    '{kind:"to3",label:"Q",title:"TO-3 PNP（MJ2955）",value:"MJ2955 PNP",footprint:"TO-3",pinCount:3,leadSpacing:2,rowSpacing:2,sameSidePitch:1},'
-    '{kind:"to247",label:"Q",title:"TO-247 NPN（2SC5200）",value:"2SC5200 NPN",footprint:"TO-247",pinCount:3,leadSpacing:2,rowSpacing:0,sameSidePitch:2},'
-    '{kind:"to247",label:"Q",title:"TO-247 PNP（2SA1943）",value:"2SA1943 PNP",footprint:"TO-247",pinCount:3,leadSpacing:2,rowSpacing:0,sameSidePitch:2}')
+    '{kind:"to92",label:"Q",title:"SOT-23 PNP（MMBT3906）",value:"MMBT3906 PNP",footprint:"SOT-23",pinCount:3,leadSpacing:1,rowSpacing:0,sameSidePitch:1}')
 src = rep(src, OLD_TRI_LIB, NEW_TRI_LIB, 'T51 library npn/pnp transistor entries')
 
 # 落板时把 value / footprint 一起写进元件：极性靠 value 认、封装族靠 footprint 认。
