@@ -152,14 +152,14 @@ assert(txt2.indexOf('脚1 E') >= 0 && txt2.indexOf('脚2 B') >= 0,
 /* ---------- 6) 打包产物里配套改动确实生效 ---------- */
 assert(bundle.indexOf('var __lcPkgPresets = {') >= 0, '存在封装预设表');
 assert(/sot23:\s*"BEC"/.test(bundle), 'SOT-23 预设为 BEC');
-assert(bundle.indexOf('function __lcPkgFamily(c)') >= 0, '存在封装族识别函数');
+assert(bundle.indexOf('function __lcPkgFamily(c, project = null)') >= 0, '存在封装族识别函数');
 assert(bundle.indexOf('if (/SOT/.test(s)) return "sot23";') >= 0,
   '保留旧工程 S8050_SOT_NPN 的 SOT-23 兼容识别');
 assert(bundle.indexOf('footprint:String(c.footprint||c.packageName||"")') >= 0,
   '导入时把认到的封装也写进组件（footprint 或 packageName）');
 assert(bundle.indexOf('(fields (field (name "Footprint") "\' + __lcEsc(c.footprint) + \'"))') >= 0,
   'Protel 转换器补上 KiCad 8 的 fields 结构，否则 packageName 永远是空');
-assert(bundle.indexOf('__lcPinNamePlan(c.kind, pi[c.name], c.pinOrder, n, __lcPkgFamily(c))') >= 0,
+assert(bundle.indexOf('__lcPinNamePlan(c.kind, pi[c.name], c.pinOrder, n, __lcPkgFamily(c, pj))') >= 0,
   '3D 标注与面板都按封装取预设');
 assert(bundle.indexOf('||!!__lcPkgPresets[__lcPkgFamily(O)])') >= 0,
   'SOT 系列封装也显示「三极管脚序」下拉');

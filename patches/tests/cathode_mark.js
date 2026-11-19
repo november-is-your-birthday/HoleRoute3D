@@ -118,6 +118,9 @@ t2.window.__lcProject = mkProj([
   N('$1N37', [['LED9', 2], ['R5', 2]]),
   N('GND', [['R5', 1], ['U2', 8]])
 ], [{ name: 'LED9', footprint: 'LED_TH-3mm', kind: 'led' }]);
+t2.window.__lcProject.importState.components = [
+  { ref: 'LED9', packageName: 'LED_TH-3mm', sourceFile: 'known.enet' }
+];
 assert(ledIdx('LED9', ['C', 'A'], 2) === 1,
   '立创 LED_TH-3mm：符号名与焊盘对不上，按拓扑取脚 2 为负极');
 

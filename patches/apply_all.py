@@ -578,7 +578,28 @@ NEW_CONT = '''function __lcContinueRoute(){H(Q=>{try{
   var oldJ=(Q.routing&&Q.routing.jumpers)||[];
   var oldT=(Q.routing&&Q.routing.traces)||[];
   var pl=__lcContinuePlan(Q.board,eps,Q.components,__lcBridgeTraces(Q,oldT),oldJ,Er(Q));
-  if(!pl)return{...Q,routing:{...Q.routing,warnings:[...(Q.routing.warnings||[]),"所有网络均已连通，无需继续布线。"]}};
+  if(!pl){
+    /* 无待补连通块 ≠ 当前结果正确：短路也会让「每个网络内部都连通」成立。
+       这里必须对现状跑一次 DRC，把冲突如实报出（审查报告 F17）。 */
+    var dq0=J0(Q.board,Q.routing,eps,Q.components);
+    var failed0=[];(dq0.failedNetDetails||[]).forEach(function(x){if(x&&x.net&&failed0.indexOf(x.net)<0)failed0.push(x.net)});
+    var conflicts0=0;
+    ((dq0.drc&&dq0.drc.errors)||[]).forEach(function(er){
+      if(!er)return;
+      if(er.net&&failed0.indexOf(er.net)<0)failed0.push(er.net);
+      if(er.expectedNet&&failed0.indexOf(er.expectedNet)<0)failed0.push(er.expectedNet);
+      if(/SHORT|OVERLAP|CROSSING|OCCUPIED|CONFLICT/.test(String(er.code||"")))conflicts0+=1;
+    });
+    var msg0=conflicts0>0
+      ?("继续布线：当前走锡存在 "+conflicts0+" 处网络冲突或短路，请运行 DRC 查看并修正后再继续布线。")
+      :"所有网络均已连通，无需继续布线。";
+    setTimeout(function(){__lcToast(msg0,4600)},120);
+    return{...Q,routing:{...Q.routing,drc:dq0.drc,diagnostics:{failedNetDetails:dq0.failedNetDetails},failedNets:failed0,
+      warnings:(Q.routing.warnings||[]).filter(function(x){
+        var w=String(x);
+        return w.indexOf("继续布线：")<0&&w.indexOf("所有网络均已连通")<0&&w.indexOf("无需继续布线")<0;
+      }).concat([msg0])}};
+  }
   /* f4 只做约束检查（跳线上限等）。failedNets 先清零 —— 它是「合并前」的旧口径，
      可能把已被旧跳线连上的网络报成未连通（审查报告 P1-1），下面合并后用 J0 统一重算。 */
   var Zt=f4(Object.assign({},pl,{failedNets:[]}),Er(Q));
@@ -629,6 +650,17 @@ NEW_CONT = '''function __lcContinueRoute(){H(Q=>{try{
 src = rep(src, 'Z4(s,M,O,C),$4(i,r,O);const T=gO(h,x);',
           'Z4(s,M,O,C),$4(i,r,O);try{__lcSeedJumpers(c,M,O,d)}catch(__lse){}const T=gO(h,x);',
           'R8a seed old jumpers into occupancy')
+
+src = rep(src, 'const h=mO(t),d=J4(s),g=bO(t)',
+          'const h=mO(t),d=__lcRouteGroups(s,c),g=bO(t)',
+          'R8c preserve physical routing groups')
+src = rep(src,
+          'const x=pO(E),D=g.length>0?p0(g):[x[0]],w=new Set(D.map(C=>oe(C[0],C[1]))),M=(g.length>0?x:x.slice(1)).filter(C=>!w.has(oe(C[0],C[1]))),O=new Set;',
+          'const x=pO(E),D=__lcRouteStart(g,x[0]),w=new Set(D.map(C=>oe(C[0],C[1]))),M=__lcRouteTargets(g,x).filter(C=>!w.has(oe(C[0],C[1]))),O=new Set;',
+          'R8d route between disconnected copper groups')
+src = rep(src, 'D.push(C.to),O.add(R),M.splice(C.remainingIndex,1)',
+          '__lcRouteAbsorb(g,C.to,D,O,M)',
+          'R8e absorb only the reached copper group')
 
 # 洞洞板 rip-up 不能拆掉用户的手工跳线：纯跳线路由组（无走锡）一律保留。
 src = rep(src, '!f.traces.some(h=>h.locked)',
@@ -777,13 +809,15 @@ src = rep(src, 'onChange:T=>v({value:T.target.value})})]}),',
 src = rep(src, 'window.__lcProject=i,window.__lcCommit=H;return P.jsxs("div",{className:"app-shell"',
           'window.__lcProject=i,window.__lcCommit=H,window.__lcUnmountAll=__lcUnmountAll;return P.jsxs("div",{className:"app-shell"',
           'M11 expose unmount-all to toolbar')
-# 每次渲染顺手把三极管脚按实物排布校正一次（幂等），保证 3D、孔位、布线三者一致
-# P1-3：渲染期不再就地改工程。__lcArrangeAll 直接改 position/pinOffsets，
-# 绕过状态提交，routing.drc 仍是「检查通过」的旧结果（审查报告 P1-3）。
-# 改为只读检查 + 下一拍走 __lcCommit 显式迁移（迁移会作废 DRC 并写明受影响元件）。
-src = rep(src, 'window.__lcProject=i,window.__lcCommit=H,window.__lcUnmountAll=__lcUnmountAll;return',
-          'window.__lcProject=i,window.__lcCommit=H,window.__lcUnmountAll=__lcUnmountAll,__lcArrangeDeferred(i);return',
-          'M12 arrange transistor leads via deferred commit')
+src = rep(src, 'const at=Q(rt);if(at===rt)return;const Ft=kO(rt,at);',
+          'const at=Q(rt);if(at===rt)return;const Ft=kO(rt,__lcArrangeApply(at));',
+          'M12 normalize transistor leads in edit transaction')
+src = rep(src, 'G(N2(JSON.parse(Q)))',
+          'G(__lcArrangeApply(N2(JSON.parse(Q))))',
+          'M13 normalize restored project before history')
+src = rep(src, 'at=N2(JSON.parse(rt));G(at)',
+          'at=__lcArrangeApply(N2(JSON.parse(rt)));G(at)',
+          'M14 normalize opened project before history')
 
 # =================================================================
 # v3.4.0
@@ -1230,11 +1264,402 @@ src = rep(src, 'Object.entries(i.pinInfo??{}).forEach(([c,f])=>{r.set(c,Object.k
           'ks.forEach(k=>{var v=Number(k);if(Number.isInteger(v)&&v>mx)mx=v});'
           'r.set(c,Math.max(ks.length,mx))})',
           'T56 model pin count from max pin number')
+src = rep(src, 'const f=vA(c,r.get(c.ref)),h=sx(f.kind,f.pinCount);',
+          'const f=vA(c,Math.max(r.get(c.ref)||0,Number(c.declaredPinCount)||0,'
+          '__lcMSPkgPins(c.packageName||c.footprint,String(c.ref).replace(/[^A-Za-z]/g,""))||0)||void 0),h=sx(f.kind,f.pinCount);',
+          'T57 preserve declared package pin count')
 
 # 库条目键加上 title：否则同封装的 NPN/PNP 两条目键相同（to92:3:Q），地图里互相覆盖。
 src = rep(src, 'function P3(i){return`${i.kind}:${i.pinCount??""}:${i.label}`}',
           'function P3(i){return`${i.kind}:${i.pinCount??""}:${i.label}:${i.title||""}`}',
           'T53 unique library keys per entry')
+
+
+# =================================================================
+# 功能缺陷深查报告（2026-11-19）批次 1：电气与几何完整性
+#   F01 缩短优化重新穿过旧跳线焊点 → 占用表登记跳线；
+#   F02 缩短优化穿越硬禁布区 + edges 与 points 失配 → 禁布进占用、同步 edges；
+#   F03 压缩线段只登记折点 → Z4 统一按 Dr() 逐孔展开；
+#   F04 DRC 不检查走锡出板 → 逐点校验 + 缩板提示；
+#   F13 DRC 失败网络只增不减 → 按本次结果重建；
+#   F17 无待补连通块时跳过 DRC → 空计划分支也如实检查；
+#   F18 拔起元件仍参与施工检查 → J0 排除 mounted=false；
+#   F20 非整数线段使 Dr() 不终止 → 整数与有限值防护。
+# =================================================================
+print('== v3.5.6 batch 1: electrical & geometry integrity ==')
+
+# F20：Dr() 只对「两端都是整数坐标的正交线段」逐孔展开。
+# 旧实现遇到 3.5 这类坐标会一直加整数步长永远到不了终点（报告 F20 的 VM 超时）。
+src = rep(src,
+          'function Dr(i){if(i.length<=1)return i;const t=[i[0]];for(let e=1;e<i.length;e+=1){const s=t[t.length-1],r=i[e],l=Math.sign(r[0]-s[0]),c=Math.sign(r[1]-s[1]);if(l!==0&&c!==0){t.push(r);continue}let f=s;for(;f[0]!==r[0]||f[1]!==r[1];)f=[f[0]+l,f[1]+c],t.push(f)}return t}',
+          'function Dr(i){if(i.length<=1)return i;const t=[i[0]];for(let e=1;e<i.length;e+=1){'
+          'const s=t[t.length-1],r=i[e];'
+          'if(!Number.isInteger(s[0])||!Number.isInteger(s[1])||!Number.isInteger(r[0])||!Number.isInteger(r[1])){t.push(r);continue}'
+          'const l=Math.sign(r[0]-s[0]),c=Math.sign(r[1]-s[1]);'
+          'if(l!==0&&c!==0){t.push(r);continue}'
+          'let f=s;for(;f[0]!==r[0]||f[1]!==r[1];)f=[f[0]+l,f[1]+c],t.push(f)}return t}',
+          'F20 guard Dr for non-integer coordinates')
+
+# F03：占用注册统一按逐孔展开。旧实现只登记折点，压缩表示的旧走锡
+# （[[1,4],[9,4]]）中间孔不算占用，新线可以直接穿过去（报告 F03）。
+src = rep(src,
+          't.set(c.id,c),r.points.forEach(([f,h])=>e.set(oe(f,h),{net:r.net,routeId:r.id,priority:l})),Q0(r.points).forEach(f=>s.set(f,{net:r.net,routeId:r.id,priority:l}))',
+          't.set(c.id,c);const __lzp=Dr(r.points);'
+          '__lzp.forEach(([f,h])=>e.set(oe(f,h),{net:r.net,routeId:r.id,priority:l})),'
+          'Q0(__lzp).forEach(f=>s.set(f,{net:r.net,routeId:r.id,priority:l}))',
+          'F03 expand compressed traces in Z4 occupancy')
+
+# F01/F02：缩短优化阶段补齐占用与约束，并在改写几何时同步 edges。
+# 旧实现只登记其它 traces：跳线焊点与禁布区都不生效，候选会穿过它们；
+# 换 points 后 edges 仍是旧绕行路径（报告 F01/F02）。
+TIGHT_OLD = (
+    'function __lcTight(i,t,e,s,r){if(!s||!s.traces||s.traces.length<2)return s;try{'
+    'const n=new Map(e.map(w=>[w.name,w])),c=TO(e,t),d=eO(i,t),u=bO(t),l=W4(i,t,n),list=s.traces.slice();'
+    'for(let h=0;h<list.length;h+=1){const g=list[h];if(!g||g.locked||!g.points||g.points.length<3)continue;'
+    'const others=[];for(let C=0;C<list.length;C+=1)if(C!==h)others.push(list[C]);'
+    'const routes=new Map,cells=new Map,edges=new Map;Z4(others,routes,cells,edges);'
+    'const cg=F2(i,t,cells,r);const V=g.points[0],k=g.points[g.points.length-1];let v=null;'
+    'try{v=h0(i,V,k,{net:g.net},u,c,d,new Set(),cells,edges,cg,"strict")}catch(B){continue}'
+    'if(!v||!v.path||v.path.length<2)continue;'
+    'const oldCost=OO(g.points)*3+IO(g.points)*55,newCost=OO(v.path)*3+IO(v.path)*55;'
+    'if(newCost<oldCost-1e-6)g.points=v.path}}catch(B){}return s}')
+TIGHT_NEW = (
+    'function __lcTight(i,t,e,s,r,jumpers,constraints){if(!s||!s.traces||s.traces.length<2)return s;try{'
+    'const n=new Map(e.map(w=>[w.name,w])),c=TO(e,t),d=eO(i,t),u=bO(t),l=W4(i,t,n),list=s.traces.slice();'
+    'for(let h=0;h<list.length;h+=1){const g=list[h];if(!g||g.locked||!g.points||g.points.length<3)continue;'
+    'const others=[];for(let C=0;C<list.length;C+=1)if(C!==h)others.push(list[C]);'
+    'const routes=new Map,cells=new Map,edges=new Map;Z4(others,routes,cells,edges);'
+    'try{__lcSeedJumpers(jumpers,routes,cells,new Map())}catch(__ltj){}'
+    'try{$4(i,constraints||[],cells)}catch(__ltk){}'
+    'const cg=F2(i,t,cells,r);const V=g.points[0],k=g.points[g.points.length-1];let v=null;'
+    'try{v=h0(i,V,k,{net:g.net},u,c,d,new Set(),cells,edges,cg,"strict")}catch(B){continue}'
+    'if(!v||!v.path||v.path.length<2)continue;'
+    'const oldCost=OO(g.points)*3+IO(g.points)*55,newCost=OO(v.path)*3+IO(v.path)*55;'
+    'if(newCost<oldCost-1e-6){g.points=v.path,'
+    'g.edges=v.path.slice(1).map((P,idx)=>[v.path[idx],P])}}'
+    '}catch(B){}return s}')
+src = rep(src, TIGHT_OLD, TIGHT_NEW, 'F01/F02 tight seeds jumpers+keepout, syncs edges')
+
+# F01：优化后重算 DRC 时同步重建失败网络。旧实现只更新 drc 对象，
+# failedNets 仍是优化前的空集，短路被「留白」（报告 F01）。
+src = rep(src,
+          'try{__lcTight(i,t,e,b,x);const __lq=J0(i,b,t,e);if(__lq){b.drc=__lq.drc,b.diagnostics={failedNetDetails:__lq.failedNetDetails},b.score=iO(i,b,t,F2(i,t,new Map,x))}}catch(__lce){}',
+          'try{__lcTight(i,t,e,b,x,c,r);const __lq=J0(i,b,t,e);if(__lq){'
+          'b.drc=__lq.drc,b.diagnostics={failedNetDetails:__lq.failedNetDetails},'
+          'b.score=iO(i,b,t,F2(i,t,new Map,x));'
+          'const __lf=new Set;'
+          '__lq.failedNetDetails.forEach(W=>__lf.add(W.net)),'
+          '__lq.drc.errors.forEach(W=>{W.net&&__lf.add(W.net),W.expectedNet&&__lf.add(W.expectedNet)}),'
+          'b.failedNets=[...__lf]}}catch(__lce){}',
+          'F01 rebuild failedNets after tight optimization')
+
+# F04：DRC 逐点检查底层走锡是否仍在板内。
+# 旧实现只校验元件引脚与跳线端点，缩板后的出板铜线完全不可见（报告 F04）。
+src = rep(src,
+          't.traces.forEach(M=>{const O=Dr(M.points),C=__lcManualNetOf(M);for(let R=0;R<O.length;R+=1){const T=O[R],B=oe(T[0],T[1]);if(sm(d,B,C),S.add(B),_.add(B),R===0)continue;',
+          't.traces.forEach(M=>{const O=Dr(M.points),C=__lcManualNetOf(M);for(let R=0;R<O.length;R+=1){const T=O[R],B=oe(T[0],T[1]);'
+          'r.isValidHole(T)||l.push({code:"TRACE_OFF_BOARD",severity:"error",message:`走锡 ${C} 的孔 (${T[0]},${T[1]}) 不在可用板面内`,net:C,grid:T});'
+          'if(sm(d,B,C),S.add(B),_.add(B),R===0)continue;',
+          'F04 DRC rejects off-board trace holes')
+
+# F04 配套：缩板时给出明确提示（不静默裁剪用户线路）。
+src = rep(src,
+          'function Wt(Q){H(rt=>{const at=A0(Q);return{...rt,board:at}})}',
+          'function Wt(Q){H(rt=>{const at=A0(Q);const __lcr=rt.routing||{};let __lco=0;'
+          '(__lcr.traces||[]).forEach(t=>(t.points||[]).forEach(p=>{'
+          '(p[0]>=at.width||p[1]>=at.height||p[0]<0||p[1]<0)&&(__lco+=1)}));'
+          '(__lcr.jumpers||[]).forEach(j=>{[j.from,j.to].forEach(p=>{'
+          'p&&(p[0]>=at.width||p[1]>=at.height||p[0]<0||p[1]<0)&&(__lco+=1)})});'
+          'if(!__lco)return{...rt,board:at};'
+          'return{...rt,board:at,routing:{...__lcr,warnings:['
+          '...(__lcr.warnings||[]).filter(w=>String(w).indexOf("缩板后")<0),'
+          '"缩板后有 "+__lco+" 个走锡/跳线端点落在板外，请删除或重新布线。"'
+          ']}}})}',
+          'F04 warn when shrink leaves copper off board')
+
+# F13：DRC 按钮按本次检查结果重建失败网络，不再与旧列表取并集。
+# 旧实现 new Set(Q.routing.failedNets) 只增不减，手工修通后失败列表永远残留（报告 F13）。
+src = rep(src,
+          ',Ft=new Set(Q.routing.failedNets);return at.failedNetDetails',
+          ',Ft=new Set;return at.failedNetDetails',
+          'F13 rebuild failedNets from current DRC')
+
+# F18：施工检查排除「已拔起」（mounted=false）的元件。
+# 旧实现无条件把元件引脚并入端点与连通图，拔起后仍报 CONNECTED（报告 F18）。
+src = rep(src,
+          'function J0(i,t,e,s){t=__lcStripBridges(t);const r=Zi(i),l=[],',
+          'function J0(i,t,e,s){t=__lcStripBridges(t);'
+          'const __lcu=new Set((s||[]).filter(M=>M&&M.mounted===false).map(M=>M.name));'
+          'if(__lcu.size){e=(e||[]).filter(M=>!__lcu.has(M.ref));s=(s||[]).filter(M=>!__lcu.has(M.name))}'
+          'const r=Zi(i),l=[],',
+          'F18 construction DRC excludes unmounted parts')
+
+
+# =================================================================
+# 功能缺陷深查报告（2026-11-19）批次 2：元件身份与端点守恒
+#   F05 改位号丢连接 → 原子重命名同步网表/pinInfo/引用；
+#   F06 允许重复位号 → 唯一性校验，拒绝空名/重名；
+#   F21 四脚端子只生成两孔 → TB 类型 + terminal_block 脚位；
+#   F22 双排排针塌成单排 → 解析 NxM 封装生成行列；
+#   F23 跨文件同一脚进两个网络无提示 → 导入冲突告警；
+#   F25 重新导入脚数增长仍用旧模型 → 重建脚位并告警。
+# =================================================================
+print('== v3.5.6 batch 2: component identity & endpoint conservation ==')
+
+# F05/F06/F12：属性更新入口。改名必须唯一且原子同步；只有几何字段变化才重算脚位。
+QT_OLD = (
+    'function Qt(Q){f&&H(rt=>{const at=rt.components.find(ee=>ee.id===f);if(!at)return rt;'
+    'const Ft={...at,...Q,leadSpacing:Q.leadSpacing!==void 0?Lo(at.kind,Q.leadSpacing,"leadSpacing"):at.leadSpacing,'
+    'rowSpacing:Q.rowSpacing!==void 0?Lo(at.kind,Q.rowSpacing,"rowSpacing"):at.rowSpacing,'
+    'sameSidePitch:Q.sameSidePitch!==void 0?Lo(at.kind,Q.sameSidePitch,"sameSidePitch"):at.sameSidePitch},'
+    'zt={...Ft,pinOffsets:Qf(Ft)};'
+    'return{...rt,components:rt.components.map(ee=>ee.id===at.id?zt:ee)}})}')
+QT_NEW = (
+    'function Qt(Q){f&&H(rt=>{const at=rt.components.find(ee=>ee.id===f);if(!at)return rt;'
+    'if(Q.name!==void 0){const nm=String(Q.name).trim();'
+    'if(!nm||rt.components.some(ee=>ee.id!==at.id&&ee.name===nm)){'
+    'try{__lcToast("位号 “"+String(Q.name)+"” 为空或已被其它元件占用，改名未生效。",3600)}catch(__lte){}'
+    'return{...rt,routing:{...rt.routing,warnings:[...(rt.routing.warnings||[]),'
+    '"位号 “"+String(Q.name)+"” 为空或已被其它元件占用，改名未生效。"]}}}}'
+    'const Ft={...at,...Q,leadSpacing:Q.leadSpacing!==void 0?Lo(at.kind,Q.leadSpacing,"leadSpacing"):at.leadSpacing,'
+    'rowSpacing:Q.rowSpacing!==void 0?Lo(at.kind,Q.rowSpacing,"rowSpacing"):at.rowSpacing,'
+    'sameSidePitch:Q.sameSidePitch!==void 0?Lo(at.kind,Q.sameSidePitch,"sameSidePitch"):at.sameSidePitch};'
+    'const __lcg=Q.leadSpacing!==void 0||Q.rowSpacing!==void 0||Q.sameSidePitch!==void 0||'
+    'Q.pinCount!==void 0||Q.kind!==void 0||Q.pinHeaderRows!==void 0||Q.pinHeaderColumns!==void 0;'
+    'const zt=__lcg?{...Ft,pinOffsets:Qf(Ft)}:{...Ft};'
+    'let out={...rt,components:rt.components.map(ee=>ee.id===at.id?zt:ee)};'
+    'if(Q.name!==void 0&&String(Q.name).trim()!==at.name)out=__lcRenameRef(out,at.name,String(Q.name).trim());'
+    'return out})}')
+src = rep(src, QT_OLD, QT_NEW, 'F05/F06/F12 atomic rename, unique refdes, keep manual pin geometry')
+# 名称输入改为「草稿 + 提交」控件；逐键提交会被唯一性校验打断（清空即被拒）。
+src = rep(src,
+          'P.jsx("input",{value:O.name,onChange:T=>v({name:T.target.value})})',
+          'P.jsx(__lcRefField,{value:O.name,onCommit:T=>v({name:T})})',
+          'F05/F06 ref field commits on blur')
+
+# F21：TB 前缀识别为端子排（原先落入 UNK 两脚兜底）。
+src = rep(src,
+          'if(l==="K")return{kind:"relay",label:"RLY",pinCount:r,rowSpacing:1};',
+          'if(l==="K")return{kind:"relay",label:"RLY",pinCount:r,rowSpacing:1};'
+          'if(l==="TB")return{kind:"terminal_block",label:"TB",pinCount:r,leadSpacing:1};',
+          'F21 terminal block kind mapping')
+
+# F21：端子排按脚数生成 1xN 孔位（原先落到默认两脚）。
+src = rep(src,
+          'if(i.kind==="pin_header"){const t=i.pinHeaderRows??1,e=i.pinHeaderColumns??i.pinCount??4;return ex(t,e,i.sameSidePitch)}',
+          'if(i.kind==="terminal_block")return ex(1,i.pinCount??2,i.leadSpacing??1);'
+          'if(i.kind==="pin_header"){const t=i.pinHeaderRows??1,e=i.pinHeaderColumns??i.pinCount??4;return ex(t,e,i.sameSidePitch)}',
+          'F21 terminal block 1xN offsets')
+
+# F21 补充：连接器前缀（CN/JP/H/CON）也按排针处理，避免同类两脚兜底。
+src = rep(src,
+          'if(/^(J|P|X|TP)/.test(l))return{kind:"pin_header",label:"HDR",pinCount:r}}',
+          'if(/^(J|P|X|TP|CN|JP|H|CON)/.test(l))return{kind:"pin_header",label:"HDR",pinCount:r}}',
+          'F21 connector prefixes map to pin header')
+
+# F22：从封装名解析 NxM 双排，行列一致时按真实排布生成孔位。
+# 旧实现只给 pinCount，Qf 默认单排，2x05 变成 1x10（报告 F22）。
+src = rep(src,
+          'S={kind:h.kind,pinCount:f.pinCount??h.pinCount,leadSpacing:Lo(h.kind,f.leadSpacing??h.leadSpacing,"leadSpacing"),rowSpacing:Lo(h.kind,f.rowSpacing??h.rowSpacing,"rowSpacing"),sameSidePitch:Lo(h.kind,h.sameSidePitch,"sameSidePitch")};',
+          'S={kind:h.kind,pinCount:f.pinCount??h.pinCount,leadSpacing:Lo(h.kind,f.leadSpacing??h.leadSpacing,"leadSpacing"),rowSpacing:Lo(h.kind,f.rowSpacing??h.rowSpacing,"rowSpacing"),sameSidePitch:Lo(h.kind,h.sameSidePitch,"sameSidePitch")};'
+          'const __lcHd=/(\d+)\s*[xX×]\s*(\d+)/.exec(String(c.packageName||c.footprint||c.package||""));'
+          'if(h.kind==="pin_header"&&__lcHd){const __lcR=Number(__lcHd[1]),__lcC=Number(__lcHd[2]);'
+          'if(__lcR>=2&&__lcR*__lcC===S.pinCount){S.pinHeaderRows=__lcR;S.pinHeaderColumns=__lcC}}',
+          'F22 dual-row header detection')
+src = rep(src,
+          'sameSidePitch:S.sameSidePitch,pinOffsets:Qf(S),footprint:String(c.footprint||c.packageName||""),',
+          'sameSidePitch:S.sameSidePitch,pinHeaderRows:S.pinHeaderRows,pinHeaderColumns:S.pinHeaderColumns,'
+          'pinOffsets:Qf(S),footprint:String(c.footprint||c.packageName||""),',
+          'F22 persist header rows/columns')
+
+# F23：跨文件导入后，同一物理脚若同时属于多个网络，必须明确告警。
+JR_OLD = (
+    'function JR(i,t){const e=new Map(i.components.map(r=>[r.ref,r]));t.components.forEach(r=>e.set(r.ref,r));'
+    'const s=new Map(i.nets.map(r=>[r.name,{...r,nodes:[...r.nodes]}]));'
+    'for(const r of t.nets){const l=s.get(r.name)??{name:r.name,nodes:[]},c=new Set(l.nodes.map(f=>`${f.ref}.${f.pin}`));'
+    'for(const f of r.nodes){const h=`${f.ref}.${f.pin}`;c.has(h)||(l.nodes.push(f),c.add(h))}s.set(r.name,l)}'
+    'return{components:[...e.values()].sort((r,l)=>D2(r.ref,l.ref)),nets:[...s.values()].sort((r,l)=>D2(r.name,l.name)),'
+    'pinInfo:{...i.pinInfo,...t.pinInfo},warnings:[...i.warnings,...t.warnings]}}')
+JR_NEW = (
+    'function JR(i,t){const e=new Map(i.components.map(r=>[r.ref,r]));t.components.forEach(r=>e.set(r.ref,r));'
+    'const s=new Map(i.nets.map(r=>[r.name,{...r,nodes:[...r.nodes]}]));'
+    'for(const r of t.nets){const l=s.get(r.name)??{name:r.name,nodes:[]},c=new Set(l.nodes.map(f=>`${f.ref}.${f.pin}`));'
+    'for(const f of r.nodes){const h=`${f.ref}.${f.pin}`;c.has(h)||(l.nodes.push(f),c.add(h))}s.set(r.name,l)}'
+    'const __lcc=new Map;'
+    's.forEach(function(net){net.nodes.forEach(function(nd){const k=nd.ref+"."+nd.pin;'
+    'let set=__lcc.get(k);if(!set){set=new Set;__lcc.set(k,set)}set.add(net.name)})});'
+    'const __lcw=[];'
+    '__lcc.forEach(function(set,k){if(set.size>1)__lcw.push("导入冲突："+k+" 同时属于网络 "+[...set].join("、")+'
+    '"（可能是不同版本的网表混导），请移除多余文件后重新生成元件。")});'
+    'return{components:[...e.values()].sort((r,l)=>D2(r.ref,l.ref)),nets:[...s.values()].sort((r,l)=>D2(r.name,l.name)),'
+    'pinInfo:{...i.pinInfo,...t.pinInfo},warnings:[...i.warnings,...t.warnings,...__lcw]}}')
+src = rep(src, JR_OLD, JR_NEW, 'F23 detect cross-file pin/net conflicts')
+
+# F25：生成元件时核对既有模型，脚数增长则重建脚位并保留位置。
+PT_OLD = ('function Pt(){H(Q=>{const rt=_A(Q.importState,Q.components,Q.board.width);'
+          'return rt.length===0?Q:{...Q,components:[...Q.components,...rt]}})}')
+PT_NEW = ('function Pt(){H(Q=>{const rt=_A(Q.importState,Q.components,Q.board.width),'
+          '__lcr=__lcReconcileImportedModels(Q);'
+          'if(rt.length===0&&!__lcr.changed)return Q;'
+          'const __lcw=[...(Q.routing.warnings||[])];'
+          '__lcr.warnings.forEach(function(w){__lcw.indexOf(w)<0&&__lcw.push(w)});'
+          'const __lcd=__lcr.changed?{drc:void 0,diagnostics:void 0}:{};'
+          'return{...Q,components:[...__lcr.components,...rt],routing:{...Q.routing,...__lcd,warnings:__lcw}}})}')
+src = rep(src, PT_OLD, PT_NEW, 'F25 reconcile existing models on re-import')
+
+
+# =================================================================
+# 功能缺陷深查报告（2026-11-19）批次 3/4：工程生命周期与文件恢复
+#   F07 新增元件未同步多选 → 用统一选择入口 Tt；
+#   F08 迟到的网表导入写进新工程 → 工程代际校验；
+#   F09 AI 草稿跨工程保留 → 草稿绑定工程并重验引用；
+#   F10 新建工程残留走锡模式/起点/AI 草稿 → 全部瞬态状态复位；
+#   F19 迟到的打开覆盖新工程 → 同上代际校验；
+#   F11 结构不完整的 JSON 被接受 → 打开前完整校验；
+#   F16 无工程缓存时跳过设置恢复并覆盖已存设置 → 先恢复设置 + 首帧不回写；
+#   F27 打开时保存失败却提示无法打开 → 区分读取/解析/保存阶段；
+#   F28 退出前没有刷盘 → beforeunload/pagehide 同步落盘（助手在 v33）。
+# =================================================================
+print('== v3.5.6 batch 3/4: lifecycle & file recovery ==')
+
+# F07：库放置走统一选择入口，主选中与多选集合保持一致。
+src = rep(src,
+          'return h(at),H(zt=>({...zt,components:[...zt.components,Ft]})),!0',
+          'return Tt(at),H(zt=>({...zt,components:[...zt.components,Ft]})),!0',
+          'F07 library placement syncs selection set')
+
+# F08：导入是异步的，提交前核对发起时的工程代际。
+src = rep(src,
+          'async function st(Q){let rt;try{rt=await ZR(Q)}',
+          'async function st(Q){const __lctok=(window.__lcProject&&window.__lcProject.id)||null;'
+          'let rt;try{rt=await ZR(Q)}',
+          'F08 capture project token before async read')
+src = rep(src,
+          'const at=Q.map(Ft=>Ft.name);H(Ft=>{const zt=JR($R(Ft.importState,at),rt),',
+          'const at=Q.map(Ft=>Ft.name);'
+          'H(Ft=>{if(__lctok!==null&&Ft.id!==__lctok)return Ft;const zt=JR($R(Ft.importState,at),rt),',
+          'F08 import commits only to originating project')
+
+# F09：AI 草稿绑定解析时的工程；确认时重验代际与元件引用。
+src = rep(src,
+          'const O=O4(M.constraints,w,i);d(O.constraints),',
+          'const O=O4(M.constraints,w,i);'
+          'const __lcd=(Array.isArray(O.constraints)?O.constraints:[]).slice();'
+          '__lcd.__lcProjectId=i.id;d(__lcd),',
+          'F09 tag ai drafts with project id')
+AI_OLD = ('function y(){if(!i||h.length===0)return;const w=N4([...Er(i),...h]);'
+          'if(w.length>0){_(w.join(" "));return}'
+          't(M=>({...M,constraints:[...Er(M),...h],constraintSchemaVersion:1})),'
+          '_(`已添加 ${h.length} 条工程约束。`),d([])}')
+AI_NEW = ('function y(){if(!i||h.length===0)return;'
+          'if(h.__lcProjectId&&h.__lcProjectId!==i.id){_(`这些指令属于另一个工程，草稿已失效，请重新解析。`),d([]);return}'
+          'const __lcm=[];'
+          'h.forEach(function(c){if(!c)return;'
+          'if(c.componentRef&&!i.components.some(function(x){return x.name===c.componentRef}))__lcm.push(c.componentRef);'
+          'if(c.anchorComponentRef&&!i.components.some(function(x){return x.name===c.anchorComponentRef}))__lcm.push(c.anchorComponentRef);'
+          '(c.componentRefs||[]).forEach(function(r){if(!i.components.some(function(x){return x.name===r}))__lcm.push(r)});'
+          'if(c.componentId&&!i.components.some(function(x){return x.id===c.componentId}))__lcm.push(c.componentRef||c.componentId)});'
+          'if(__lcm.length){_(`草稿引用的元件 ${__lcm.join("、")} 已不在当前工程，请重新解析。`),d([]);return}'
+          'const w=N4([...Er(i),...h]);'
+          'if(w.length>0){_(w.join(" "));return}'
+          't(M=>({...M,constraints:[...Er(M),...h],constraintSchemaVersion:1})),'
+          '_(`已添加 ${h.length} 条工程约束。`),d([])}')
+src = rep(src, AI_OLD, AI_NEW, 'F09 revalidate ai drafts on confirm')
+
+# F10：新建工程复位全部瞬态状态：走锡模式、起点、多选、AI 草稿。
+src = rep(src,
+          'function K(Q,rt){G(HO(Q,rt)),h(void 0),R(void 0),O(void 0),le(),r(!1)}',
+          'function K(Q,rt){G(HO(Q,rt)),h(void 0),R(void 0),O(void 0),le(),r(!1),'
+          '__lcSelClear(),x(void 0),w(void 0),J.discardDrafts()}',
+          'F10 new project resets transient ui state')
+
+# F19/F27/F11：打开工程 = 读取 → 解析 → 结构校验 → 代际校验 → 切换 → 单独处理保存失败。
+CT_OLD = ('function Ct(Q){try{const rt=await Q.text(),at=__lcArrangeApply(N2(JSON.parse(rt)));'
+          'G(at),h(void 0),R(void 0),O(void 0),le(),'
+          'window.localStorage.setItem(mf,JSON.stringify(at))}'
+          'catch{window.alert("无法打开工程文件，请确认是导出的 JSON 工程。")}}')
+CT_NEW = ('function Ct(Q){const __lctok=(window.__lcProject&&window.__lcProject.id)||null;'
+          'let rt;try{rt=await Q.text()}catch{window.alert("无法读取工程文件，请重试。");return}'
+          'let __lcp;try{__lcp=JSON.parse(rt)}catch{window.alert("无法打开工程文件：不是有效的 JSON。");return}'
+          'const __lcbad=__lcValidateProject(__lcp);'
+          'if(__lcbad){window.alert("无法打开工程文件："+__lcbad);return}'
+          'const at=__lcArrangeApply(N2(__lcp)),__lclive=window.__lcProject;'
+          'if(__lctok!==null&&__lclive&&__lclive.id!==__lctok)return;'
+          'G(at),h(void 0),R(void 0),O(void 0),le();'
+          'try{window.localStorage.setItem(mf,JSON.stringify(at))}'
+          'catch(err){window.alert("工程已打开，但自动保存失败（存储不可用或空间不足）："+(err&&err.message?err.message:String(err)))}}')
+src = rep(src, CT_OLD, CT_NEW, 'F19/F27/F11 guarded project open with validation')
+
+# F16：先恢复设置再决定是否恢复工程；设置写回跳过首帧，避免用默认值覆盖已存设置。
+SET_OLD = ('qt.useEffect(()=>{const Q=window.localStorage.getItem(mf);if(!Q)return;'
+           'try{G(__lcArrangeApply(N2(JSON.parse(Q))))}catch{window.localStorage.removeItem(mf)}'
+           'const rt=window.localStorage.getItem(rm);if(rt)try{const at=JSON.parse(rt);'
+           'g({...Q2,...at,shortcuts:{...Vy,...at.shortcuts}})}catch{window.localStorage.removeItem(rm)}},[])')
+SET_NEW = ('qt.useEffect(()=>{'
+           'const __lcs=window.localStorage.getItem(rm);'
+           'if(__lcs)try{const at=JSON.parse(__lcs);g({...Q2,...at,shortcuts:{...Vy,...at.shortcuts}})}catch{window.localStorage.removeItem(rm)}'
+           'const Q=window.localStorage.getItem(mf);if(!Q)return;'
+           'try{G(__lcArrangeApply(N2(JSON.parse(Q))))}catch{window.localStorage.removeItem(mf)}},[])')
+src = rep(src, SET_OLD, SET_NEW, 'F16 restore settings independently of project cache')
+src = rep(src,
+          'qt.useEffect(()=>{window.localStorage.setItem(rm,JSON.stringify(d))},[d])',
+          'qt.useEffect(()=>{if(!window.__lcSettingsWriteReady){window.__lcSettingsWriteReady=!0;return}'
+          'window.localStorage.setItem(rm,JSON.stringify(d))},[d])',
+          'F16 skip first-frame settings writeback')
+
+
+# =================================================================
+# 功能缺陷深查报告（2026-11-19）批次 5：编辑与派生状态
+#   F24 Multisim 双报告删除后残留 → 导入批次来源可追踪；
+#   F26 Esc 不取消走锡起点/待放置元件 → 根监听器统一取消。
+#   （F12/F13/F14/F15/F16/F18 已在前面的补丁段中完成）
+# =================================================================
+print('== v3.5.6 batch 5: editing & derived state ==')
+
+# F24：把「合成来源」登记到文件记录上。Multisim 双报告解析后的 sourceFile
+# 是 multisim-reports，与两个真实文件名都不相等，旧删除逻辑永远匹配不到。
+# 这里为每批导入计算「解析产物的来源键」，当出現与文件名不同的合成键时，
+# 把它挂在本次所有文件记录的 sourceIds 上，供删除时整批清理。
+ST_OLD = ('const at=Q.map(Ft=>Ft.name);'
+          'H(Ft=>{if(__lctok!==null&&Ft.id!==__lctok)return Ft;'
+          'const zt=JR($R(Ft.importState,at),rt),'
+          'ee=[...Ft.files.filter(q=>!at.includes(q.name)),...Q.map(q=>({id:crypto.randomUUID(),name:q.name,size:q.size,importedAt:new Date().toISOString()}))];'
+          'return{...Ft,files:ee,importState:zt}})}')
+ST_NEW = ('const at=Q.map(Ft=>Ft.name);'
+          'const __lcsrc=[];((rt&&rt.components)||[]).concat((rt&&rt.nets)||[]).forEach(function(x){'
+          'if(x&&x.sourceFile&&__lcsrc.indexOf(x.sourceFile)<0)__lcsrc.push(x.sourceFile)});'
+          'const __lcsynth=__lcsrc.filter(function(k){return !Q.some(function(q){return q.name===k})});'
+          'H(Ft=>{if(__lctok!==null&&Ft.id!==__lctok)return Ft;'
+          'const zt=JR($R(Ft.importState,at),rt),'
+          'ee=[...Ft.files.filter(q=>!at.includes(q.name)),...Q.map(q=>Object.assign({'
+          'id:crypto.randomUUID(),name:q.name,size:q.size,importedAt:new Date().toISOString()},'
+          '__lcsynth.length?{sourceIds:__lcsynth.slice()}:{}))];'
+          'return{...Ft,files:ee,importState:zt}})}')
+src = rep(src, ST_OLD, ST_NEW, 'F24 track multisim batch sources on file records')
+
+# F24：删除文件时按「文件名 + 批次来源」清理，双报告整批移除。
+VT_OLD = ('function vt(Q){H(rt=>{const at=rt.files.find(ee=>ee.id===Q);if(!at)return rt;'
+          'const Ft=rt.files.filter(ee=>ee.id!==Q),'
+          'zt={components:rt.importState.components.filter(ee=>ee.sourceFile!==at.name),'
+          'nets:rt.importState.nets.map(ee=>({...ee,nodes:ee.nodes.filter(q=>q.sourceFile!==at.name)})).filter(ee=>ee.nodes.length>0),'
+          'warnings:rt.importState.warnings.filter(ee=>ee.fileName!==at.name),'
+          'pinInfo:rt.importState.pinInfo};'
+          'return{...rt,files:Ft,importState:zt,selectedNetName:void 0}})}')
+VT_NEW = ('function vt(Q){H(rt=>{const at=rt.files.find(ee=>ee.id===Q);if(!at)return rt;'
+          'const __key=new Set([at.name].concat(at.sourceIds||[]));'
+          'const Ft=rt.files.filter(ee=>ee.id!==Q),'
+          'zt={components:rt.importState.components.filter(ee=>!__key.has(ee.sourceFile)),'
+          'nets:rt.importState.nets.map(ee=>({...ee,nodes:ee.nodes.filter(q=>!__key.has(q.sourceFile))})).filter(ee=>ee.nodes.length>0),'
+          'warnings:rt.importState.warnings.filter(ee=>!__key.has(ee.fileName)),'
+          'pinInfo:rt.importState.pinInfo};'
+          'return{...rt,files:Ft,importState:zt,selectedNetName:void 0}})}')
+src = rep(src, VT_OLD, VT_NEW, 'F24 remove multisim batch by source keys')
+
+# F26：Esc 取消当前操作（待放置元件、走锡起点），与教程描述一致。
+src = rep(src,
+          'if(at.key==="Escape"){B(void 0);return}',
+          'if(at.key==="Escape"){B(void 0),O(void 0),w(void 0);return}',
+          'F26 Esc cancels pending placement and route draft')
 
 if CHECK_ONLY:
     print('check only, not written')

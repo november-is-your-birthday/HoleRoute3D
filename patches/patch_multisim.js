@@ -39,7 +39,8 @@ function __lcMSFoldRef(ref){
 }
 function __lcMSPkgPins(pkg,refPrefix){
   var p=String(pkg||"").toUpperCase();
-  if(refPrefix!=="U"&&refPrefix!=="A")return void 0;
+  refPrefix=String(refPrefix||"").toUpperCase();
+  if(refPrefix!=="U"&&refPrefix!=="A"&&refPrefix!=="IC")return void 0;
   if(p.indexOf("CASE751A")>=0)return 14;
   var m=p.match(/(?:DIP|PDIP|SDIP|SO|SOP|SOIC)[- ]?P?[- ]?(\d+)/i)||p.match(/\b(\d+)[- ]?DIP\b/i)||p.match(/\bD0?(\d+)\b/i)||p.match(/\bN0?(\d+)\b/i)||p.match(/(\d+)\s*PIN/i);
   if(!m)return void 0;

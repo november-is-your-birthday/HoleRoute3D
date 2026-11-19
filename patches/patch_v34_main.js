@@ -62,6 +62,41 @@ function __lcAsk(msg) {
     return true;
   } catch (e) { return true; }
 }
+/* 扩板 / 缩板时同步变换「定义在板坐标里」的约束（审查报告 F15）。
+ * 母线约束的 index 与 from/to、保留区的 region 都是板坐标；
+ * 只平移元件与走锡、不动约束，下次自动布线会按旧坐标重新铺线。 */
+function __lcShiftConstraints(list, sx, sy, shrinkAxis, shrinkIdx) {
+  var out = [], dropped = 0;
+  (list || []).forEach(function (k) {
+    if (!k || typeof k !== "object") return;
+    var nk = Object.assign({}, k);
+    if (nk.kind === "power_rail") {
+      if (nk.axis === "row") {
+        if (sy) nk.index = (Number(nk.index) || 0) + sy;
+        if (sx) { nk.from = (Number(nk.from) || 0) + sx; nk.to = (Number(nk.to) || 0) + sx; }
+      } else {
+        if (sx) nk.index = (Number(nk.index) || 0) + sx;
+        if (sy) { nk.from = (Number(nk.from) || 0) + sy; nk.to = (Number(nk.to) || 0) + sy; }
+      }
+      if (shrinkAxis === "x" && nk.axis !== "row" && nk.index === shrinkIdx) { dropped += 1; return; }
+      if (shrinkAxis === "y" && nk.axis === "row" && nk.index === shrinkIdx) { dropped += 1; return; }
+      if (Number(nk.from) > Number(nk.to)) { var tmp = nk.from; nk.from = nk.to; nk.to = tmp; }
+      out.push(nk); return;
+    }
+    if (nk.region && typeof nk.region === "object") {
+      var rg = Object.assign({}, nk.region);
+      if (sx) rg.x = (Number(rg.x) || 0) + sx;
+      if (sy) rg.y = (Number(rg.y) || 0) + sy;
+      if (rg.x < 0) { rg.width = (Number(rg.width) || 0) + rg.x; rg.x = 0; }
+      if (rg.y < 0) { rg.height = (Number(rg.height) || 0) + rg.y; rg.y = 0; }
+      nk.region = rg;
+      if (!(Number(rg.width) > 0) || !(Number(rg.height) > 0)) { dropped += 1; return; }
+      out.push(nk); return;
+    }
+    out.push(nk);
+  });
+  return { list: out, dropped: dropped };
+}
 function __lcBoardGrow(side, delta) {
   var pj = window.__lcProject;
   if (!pj || !pj.board) return;
@@ -83,9 +118,10 @@ function __lcBoardGrow(side, delta) {
   if (delta < 0 && cur <= MIN) { __lcToast(unit + "数已达下限 " + MIN); return; }
   var shiftX = side === "left" ? delta : 0;
   var shiftY = side === "top" ? delta : 0;
-  var dropT = {}, dropJ = {}, removedT = 0, removedJ = 0;
+  var dropT = {}, dropJ = {}, removedT = 0, removedJ = 0, shrinkIdx = null;
   if (delta < 0) {
     var idx = side === "left" ? 0 : side === "right" ? w - 1 : side === "top" ? 0 : h - 1;
+    shrinkIdx = idx;
     var hit = __lcLineHits(pj, horiz ? "x" : "y", idx);
     // 元件必须用户自己移走（自动挪会改变电路布局）；铜箔不同——孔都没了，锡不可能留在空中
     if (hit.comps.length) {
@@ -137,13 +173,17 @@ function __lcBoardGrow(side, delta) {
         to: [j.to[0] + shiftX, j.to[1] + shiftY]
       });
     });
+    var cs = __lcShiftConstraints(p.constraints, shiftX, shiftY,
+      delta < 0 ? (horiz ? "x" : "y") : "", shrinkIdx);
     var grown = horiz ? ("板宽 " + Math.round(bb.width) + " → " + nw + " 列")
       : ("板高 " + Math.round(bb.height) + " → " + nh + " 行");
     var msg = grown + (shiftX || shiftY ? "（左侧/上侧新增，已有内容整体平移 1 格）" : "") +
+      (cs.dropped ? "，" + cs.dropped + " 条约束因所在行列被删除而失效" : "") +
       "。板尺寸已改变，请重跑 DRC。";
     return Object.assign({}, p, {
       board: Object.assign({}, bb, { width: nw, height: nh }),
       components: comps,
+      constraints: cs.list,
       routing: Object.assign({}, rt, {
         traces: traces, jumpers: jumpers, drc: void 0, diagnostics: void 0,
         warnings: (rt.warnings || [])
@@ -940,6 +980,7 @@ function __lcEnet(obj, fileName) {
       value: value,
       category: __lcEnetCategory(ref, value, fp, pinCount),
       packageName: fp,
+      declaredPinCount: pinCount,
       sourceFile: src
     });
   }

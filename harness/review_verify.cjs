@@ -2,63 +2,9 @@
 // 与报告的 review-evidence/review-probes.cjs 场景一一对应，但断言的是「修复后」的行为。
 // 用法：node harness/review_verify.cjs
 'use strict';
-const fs = require('node:fs');
-const path = require('node:path');
 const vm = require('node:vm');
 const assert = require('node:assert/strict');
-
-const ROOT = path.join(__dirname, '..');
-const source = fs.readFileSync(path.join(ROOT, 'src/dist/assets/index-C0NrTOjn.js'), 'utf8');
-
-function grabFunction(name, input = source) {
-  const marker = 'function ' + name + '(';
-  const start = input.indexOf(marker);
-  if (start < 0) throw new Error('Missing ' + name);
-  const opening = input.indexOf('{', start);
-  let depth = 0;
-  for (let index = opening; index < input.length; index += 1) {
-    if (input[index] === '{') depth += 1;
-    if (input[index] === '}' && --depth === 0) return input.slice(start, index + 1);
-  }
-  throw new Error('Unbalanced ' + name);
-}
-
-function loadApp() {
-  const element = () => ({
-    style: {}, relList: { supports: () => true },
-    setAttribute() {}, addEventListener() {}, appendChild() {},
-    getContext: () => null,
-  });
-  const document = {
-    createElement: element, getElementById: () => null, querySelectorAll: () => [],
-    addEventListener() {}, head: element(), body: element(),
-    documentElement: { style: {}, dataset: {} },
-  };
-  const storage = new Map();
-  const window = {
-    addEventListener() {}, removeEventListener() {},
-    localStorage: {
-      getItem: key => storage.get(key) ?? null,
-      setItem: (key, value) => storage.set(key, value),
-    },
-    location: { protocol: 'file:' },
-    setTimeout: () => 0, clearTimeout() {},
-  };
-  const sandbox = {
-    console, document, window,
-    localStorage: window.localStorage,
-    navigator: { userAgent: 'node-verify' },
-    performance,
-    crypto: require('node:crypto').webcrypto,
-    setTimeout: () => 0, clearTimeout() {},
-    URL, Headers, AbortController, TextEncoder, TextDecoder,
-  };
-  vm.createContext(sandbox);
-  const runtime = source.slice(0, source.lastIndexOf('JM.createRoot('))
-    .replaceAll('import.meta.url', '"file:///verify/index.js"');
-  vm.runInContext(runtime, sandbox, { filename: 'application-bundle.js', timeout: 10000 });
-  return sandbox;
-}
+const { source, grabFunction, loadApp } = require('./app-sandbox.cjs');
 
 const app = loadApp();
 const componentSource = source.slice(source.indexOf('function XO('));
@@ -172,6 +118,9 @@ check('P1-2 切换工程后重做不再把旧工程换回来', () => {
     e: { current: { id: 'project-A', name: 'A edited' } },
     v: { current: [{ id: 'project-A', name: 'A before edit' }] },
     S() {}, h() {}, R() {}, O() {}, r() {},
+    x() {}, w() {},
+    __lcSelClear() {},
+    J: { discardDrafts() {} },
     HO: app.HO,
     __lcHistoryLimit: () => 200,
   };
@@ -199,6 +148,7 @@ check('P2-5 删除 R2 后再添加得到 R2 而非第二个 R3', () => {
     crypto: require('node:crypto').webcrypto,
     qO: app.qO,
     __lcUniqueRef: app.__lcUniqueRef,
+    Tt() {},
     h() {},
     H: updater => { libraryProject = updater(libraryProject); },
   };
@@ -245,8 +195,8 @@ check('P2-8 网络名叫 constructor/toString/__proto__ 不炸', () => {
   return { note: '四个原型名网络全部导入成功' };
 });
 
-/* ---------- P1-3：渲染期迁移走显式提交并作废 DRC ---------- */
-check('P1-3 引脚迁移不再静默改工程，DRC 同步作废', () => {
+/* ---------- P1-3：加载时迁移并作废 DRC ---------- */
+check('P1-3 加载时迁移返回新工程，DRC 同步作废', () => {
   const migrationEndpoints = [
     { ref: 'Q1', pin: 1, net: 'B', grid: [2, 3] },
     { ref: 'Q1', pin: 2, net: 'E', grid: [3, 3] },
@@ -272,13 +222,9 @@ check('P1-3 引脚迁移不再静默改工程，DRC 同步作废', () => {
   migrated.routing.drc = initialDrc.drc;
 
   app.window.__lcProject = migrated;
-  let committed = null;
-  app.window.__lcCommit = fn => { committed = fn(migrated); };
-  // 让 setTimeout 立即执行（沙箱默认是空操作）
-  app.setTimeout = fn => { fn(); return 0; };
-  app.__lcArrangeDeferred(migrated);
+  const committed = app.__lcArrangeApply(migrated);
 
-  assert.ok(committed, '延迟迁移通过 __lcCommit 显式提交');
+  assert.notEqual(committed, migrated, '加载迁移返回新的工程');
   assert.equal(migrated.components[0].position[0], 2, '原工程对象未被就地修改（渲染期无副作用）');
   assert.equal(committed.components[0].position[0], 3, '迁移后 position 平移到脚 1 新孔');
   assert.equal(committed.routing.drc, undefined, '旧 DRC 结果作废');
@@ -286,12 +232,7 @@ check('P1-3 引脚迁移不再静默改工程，DRC 同步作废', () => {
   assert.ok((committed.routing.warnings || []).some(w => String(w).indexOf('三极管引脚排布已迁移') >= 0 && String(w).indexOf('Q1') >= 0),
     '警告写明受影响元件');
 
-  // 幂等：对已迁移工程再跑一次，不产生新的提交
-  let second = null;
-  app.window.__lcCommit = fn => { second = fn(committed); };
-  app.window.__lcProject = committed;
-  app.__lcArrangeDeferred(committed);
-  assert.equal(second, null, '已迁移工程不重复提交');
+  assert.equal(app.__lcArrangeApply(committed), committed, '已迁移工程不重复提交');
   return { note: '一次性迁移 + DRC 作废 + Q1 平移到 (3,3)' };
 });
 

@@ -31,6 +31,9 @@ jobs:
       - name: 独立连通性校验（不复用被改算法）
         run: node harness/check.js --only=small-555
 
+      - name: 应用主包修复场景验证
+        run: node harness/review_verify.cjs
+
       - name: 飞线层逻辑回归
         run: node harness/rats-check.js
 

@@ -125,7 +125,7 @@ function growBox(project, opts) {
     },
   };
   vm.createContext(gb);
-  ['__lcLcName', '__lcLineHits', '__lcAsk', '__lcBoardGrow'].forEach(n =>
+  ['__lcLcName', '__lcLineHits', '__lcAsk', '__lcShiftConstraints', '__lcBoardGrow'].forEach(n =>
     vm.runInContext(grabFn(bundle, 'function ' + n + '('), gb));
   return { gb, state, toasts, confirms };
 }

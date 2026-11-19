@@ -28,7 +28,7 @@ function grabFn(src, name) {
 }
 
 let code = '';
-['__lcNetAfter', '__lcNetClearCopper', '__lcNetAddTo', '__lcNetCommit', '__lcNetDel', '__lcNetDelNet']
+['__lcNetAfter', '__lcNetClearCopper', '__lcNetSig', '__lcNetAddTo', '__lcNetCommit', '__lcNetDel', '__lcNetDelNet']
   .forEach((n) => { code += grabFn(bundle, n); });
 // __lcNetDel / __lcNetDelNet go through __lcNetCommit → window.__lcCommit: capture the updater.
 code += 'var __committed;var window={__lcCommit:function(fn){__committed=fn}};\n';

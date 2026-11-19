@@ -100,8 +100,18 @@ function __lcNetClearCopper(p,names,quiet){
   next.warnings=quiet?keep:keep.concat(["网络 "+names.join("、")+" 的引脚已变更，该网络的走锡 / 跳线已清除，请重新布线。"]);
   return{...p,routing:next};
 }
+/* 网表签名字符串：只关心「网络名 → 该网的 (ref.pin) 集合」，与节点顺序无关。
+ * 重复把同一个脚加入同一网络时前后签名相同，就不该清铜线（审查报告 F14）。 */
+function __lcNetSig(nets){
+  return JSON.stringify((nets||[]).map(function(n){
+    var keys=(n.nodes||[]).map(function(nd){return String(nd.ref)+"."+String(nd.pin)});
+    keys.sort();
+    return String(n.name)+"#"+keys.join("|");
+  }));
+}
 function __lcNetAddTo(p,nm,ref,pin){
   var pn=String(pin);
+  var __sigBefore=__lcNetSig(p.importState.nets);
   var changed=!1;
   var lost=[];
   var nets=p.importState.nets.map(function(n){
@@ -123,7 +133,8 @@ function __lcNetAddTo(p,nm,ref,pin){
   /* 引脚被移空的源网络一并移除，避免留下空网络（目标网络刚加过引脚，不会被误删） */
   nets=nets.filter(function(n){return n.nodes.length>0||n.name===nm});
   var res={...p,importState:{...p.importState,nets:nets}};
-  if(changed)res=__lcNetClearCopper(res,[nm].concat(lost),!1);
+  /* 以「最终集合是否真的变化」为准：先删后加的中间态不算变化。 */
+  if(__sigBefore!==__lcNetSig(nets))res=__lcNetClearCopper(res,[nm].concat(lost),!1);
   return res;
 }
 function __lcNetAdd(nm,ref,pin){__lcNetCommit(function(p){return __lcNetAddTo(p,nm,ref,pin)})}

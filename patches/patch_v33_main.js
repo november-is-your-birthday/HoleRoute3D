@@ -78,7 +78,7 @@ var __lcPkgTitles = {
  * 立创符号库名称时，仍要按 SOT-23 处理。它与同一电路的新 .enet 对照后
  * 确认就是 SOT-23；而且 $1N5（C2/R3 基极节点）在脚 1，正好对应 1=B。
  * 若显式 FOOTPRINT 是 TO-92，函数会先命中 TO-92 并直接返回，不会被 value 带偏。 */
-function __lcPkgText(c) {
+function __lcPkgText(c, project = null) {
   if (!c) return "";
   var keys = ["footprint", "packageName", "value", "package", "pkg", "device", "footprintName"];
   var out = [], i;
@@ -89,7 +89,7 @@ function __lcPkgText(c) {
     if (s) out.push(s);
   }
   /* 导入时认到的封装名存在 importState.components 的同 ref 条目里 */
-  var pj = window.__lcProject || {};
+  var pj = project || window.__lcProject || {};
   var ic = pj.importState && pj.importState.components;
   if (ic && c.name) {
     for (i = 0; i < ic.length; i += 1) {
@@ -103,8 +103,8 @@ function __lcPkgText(c) {
   }
   return out.join(" ").toUpperCase();
 }
-function __lcPkgFamily(c) {
-  var s = __lcPkgText(c);
+function __lcPkgFamily(c, project = null) {
+  var s = __lcPkgText(c, project);
   if (!s) return "";
   /* 直插优先：名字里同时出现 "TO-92" 与其它字样时以直插为准 */
   if (/TO[-_ ]?92/.test(s)) return "to92";
@@ -214,12 +214,67 @@ function __lcPinNamePlan(kind, pinInfoEntry, pinOrder, pinCount, pkg) {
   return __lcPinPlanTag(out, "number");
 }
 
-/* 把「已有跳线」登记进规划状态：
- *   - 两个焊点进占用表 O：新走锡不能从别的网络的跳线焊点上穿过去（审查报告 P1-1）；
- *   - 整根跳线作为独立路由组进 M：SO() 汇总结果时会保留它（原 ID 不变），
- *     之后的 DRC / 连通性也就看得见它；
- *   - 焊点并进 d（按网络的已知点集），同网络可以从焊点续线。
- * 跳线只占两端焊点 —— 跨越部分是悬空导线，不占板孔，所以不进段占用表。 */
+function __lcRouteGroups(traces, jumpers) {
+  var networks = new Map();
+  function connect(net, points) {
+    if (!points.length) return;
+    var network = networks.get(net);
+    if (!network) {
+      network = { union: new Oy(), points: new Map() };
+      networks.set(net, network);
+    }
+    var first = oe(points[0][0], points[0][1]);
+    network.union.add(first);
+    points.forEach(function (point) {
+      var key = oe(point[0], point[1]);
+      network.points.set(key, point);
+      network.union.add(key);
+      network.union.union(first, key);
+    });
+  }
+  (traces || []).forEach(function (trace) {
+    connect(trace.net, trace.__lcBridge ? trace.points : Dr(trace.points));
+  });
+  (jumpers || []).forEach(function (jumper) {
+    if (jumper && jumper.from && jumper.to) connect(jumper.net, [jumper.from, jumper.to]);
+  });
+  var result = new Map();
+  networks.forEach(function (network, net) {
+    var groups = new Map();
+    network.points.forEach(function (point, key) {
+      var root = network.union.find(key);
+      if (!groups.has(root)) groups.set(root, []);
+      groups.get(root).push(point);
+    });
+    var points = Array.from(network.points.values());
+    points.__lcGroups = Array.from(groups.values());
+    result.set(net, points);
+  });
+  return result;
+}
+function __lcRouteStart(known, first) {
+  var groups = known.__lcGroups || [];
+  for (var index = 0; index < groups.length; index += 1) {
+    if (groups[index].some(function (point) { return point[0] === first[0] && point[1] === first[1]; })) {
+      return groups[index].slice();
+    }
+  }
+  return [first];
+}
+function __lcRouteTargets(known, endpoints) {
+  return p0(endpoints.concat((known.__lcGroups || []).map(function (group) { return group[0]; })));
+}
+function __lcRouteAbsorb(known, target, connected, visited, remaining) {
+  var points = __lcRouteStart(known, target);
+  points.forEach(function (point) {
+    var key = oe(point[0], point[1]);
+    if (!visited.has(key)) connected.push(point);
+    visited.add(key);
+  });
+  for (var index = remaining.length - 1; index >= 0; index -= 1) {
+    if (visited.has(oe(remaining[index][0], remaining[index][1]))) remaining.splice(index, 1);
+  }
+}
 function __lcSeedJumpers(js, M, O, d) {
   if (!js || !js.length) return;
   for (var i = 0; i < js.length; i += 1) {
@@ -302,12 +357,12 @@ function __lcPickJumper(ev) {
   }
 }
 
-/* ---------- 元件引脚名（供 3D 标注与悬停提示共用） ---------- */function __lcPinNamesOf(c) {
-  var pj = window.__lcProject || {};
+/* ---------- 元件引脚名（供 3D 标注与悬停提示共用） ---------- */function __lcPinNamesOf(c, project = null) {
+  var pj = project || window.__lcProject || {};
   var pi = (pj.importState && pj.importState.pinInfo) || {};
   var n = (c.pinOffsets && c.pinOffsets.length) || c.pinCount || 0;
   try {
-    return __lcPinNamePlan(c.kind, pi[c.name], c.pinOrder, n, __lcPkgFamily(c));
+    return __lcPinNamePlan(c.kind, pi[c.name], c.pinOrder, n, __lcPkgFamily(c, pj));
   } catch (e) {
     return [];
   }
@@ -327,9 +382,180 @@ function __lcPickJumper(ev) {
  * 所以孔位换算（脚1 为锚点）与 3D 摆放（Ey 减去锚点偏移）都保持一致。
  * 角色判不出来时（名字只有 1/2/3）不动，交给用户在面板里手选脚序。
  * 本函数幂等：排好之后再跑一遍不会来回翻。 */
+/* 位号输入框：本地草稿 + 失焦/回车提交（F05/F06 的配套交互）。
+ * 位号是电气主键，必须非空且唯一；但如果每次按键都直接提交，
+ * 清空输入框那一刻的空串会被拒绝、受控输入框立刻弹回旧值，用户根本改不了名。
+ * 与板宽/板高输入同一套做法：编辑期间只改草稿，提交时才校验。 */
+function __lcRefField(props) {
+  var st = qt.useState(String(props.value == null ? "" : props.value));
+  var txt = st[0];
+  var setTxt = st[1];
+  var editing = qt.useRef(false);
+  qt.useEffect(function () {
+    if (!editing.current) setTxt(String(props.value == null ? "" : props.value));
+  }, [props.value]);
+  return P.jsx("input", {
+    value: txt,
+    onFocus: function (e) { editing.current = true; try { e.target.select(); } catch (x) {} },
+    onBlur: function () {
+      editing.current = false;
+      var v = String(txt).trim();
+      if (v && v !== props.value) props.onCommit(v);
+      else setTxt(String(props.value == null ? "" : props.value));
+    },
+    onChange: function (e) { setTxt(e.target.value); },
+    onKeyDown: function (e) {
+      if (e.key === "Enter") { try { e.currentTarget.blur(); } catch (x) {} }
+      else if (e.key === "Escape") {
+        setTxt(String(props.value == null ? "" : props.value));
+        editing.current = false;
+        try { e.currentTarget.blur(); } catch (x) {}
+      }
+    }
+  });
+}
+/* 工程文件结构校验（审查报告 F11）：合法 JSON 不代表合法工程。
+ * 打开入口在切换当前工程之前必须完整校验，避免缺字段的工程写进自动保存、
+ * 下一次渲染直接抛错。坐标必须是有限整数，数据量设上限防止坏文件拖死界面。 */
+function __lcValidateProject(p) {
+  if (!p || typeof p !== "object" || Array.isArray(p)) return "内容不是工程对象。";
+  const b = p.board;
+  if (!b || typeof b !== "object") return "缺少 board 字段。";
+  const w = Number(b.width), h = Number(b.height);
+  if (!Number.isFinite(w) || !Number.isFinite(h) || w % 1 !== 0 || h % 1 !== 0) return "板宽/板高必须是整数。";
+  if (w < 3 || h < 3 || w > 200 || h > 200) return "板尺寸超出 3–200 的范围。";
+  if (!Array.isArray(p.components)) return "components 必须是数组。";
+  if (p.components.length > 5000) return "元件数量超过 5000，拒绝打开。";
+  for (let i = 0; i < p.components.length; i += 1) {
+    const c = p.components[i];
+    if (!c || typeof c !== "object") return "第 " + (i + 1) + " 个元件不是对象。";
+    if (!c.id || !c.name || !c.kind) return "元件 " + (c.name || i + 1) + " 缺少 id/name/kind。";
+    if (!Array.isArray(c.pinOffsets) || !c.pinOffsets.length) return "元件 " + c.name + " 缺少 pinOffsets。";
+    if (!Array.isArray(c.position) || !Number.isInteger(c.position[0]) || !Number.isInteger(c.position[1])) return "元件 " + c.name + " 的 position 不是整数坐标。";
+    for (const off of c.pinOffsets) {
+      if (!Array.isArray(off) || !Number.isInteger(off[0]) || !Number.isInteger(off[1])) return "元件 " + c.name + " 的引脚偏移不是整数坐标。";
+    }
+  }
+  if (!Array.isArray(p.files)) return "files 必须是数组。";
+  const im = p.importState;
+  if (!im || typeof im !== "object") return "缺少 importState 字段。";
+  if (!Array.isArray(im.components)) return "importState.components 必须是数组。";
+  if (!Array.isArray(im.nets)) return "importState.nets 必须是数组。";
+  if (im.pinInfo === void 0 || im.pinInfo === null || typeof im.pinInfo !== "object") return "importState.pinInfo 无效。";
+  if (p.routing !== void 0) {
+    const rt = p.routing;
+    if (!rt || typeof rt !== "object") return "routing 无效。";
+    if (rt.traces !== void 0 && !Array.isArray(rt.traces)) return "routing.traces 必须是数组。";
+    if (rt.jumpers !== void 0 && !Array.isArray(rt.jumpers)) return "routing.jumpers 必须是数组。";
+    if ((rt.traces || []).length > 50000) return "走锡数量超过上限，拒绝打开。";
+    const traces0 = rt.traces || [];
+    for (let ti = 0; ti < traces0.length; ti += 1) {
+      const pts0 = (traces0[ti] && traces0[ti].points) || [];
+      for (let pi = 0; pi < pts0.length; pi += 1) {
+        const pt = pts0[pi];
+        if (!Array.isArray(pt) || !Number.isInteger(pt[0]) || !Number.isInteger(pt[1])) return "走锡存在非整数坐标点。";
+      }
+    }
+  }
+  if (p.constraints !== void 0 && !Array.isArray(p.constraints)) return "constraints 必须是数组。";
+  return "";
+}
+/* 退出前同步刷盘（审查报告 F28）：自动保存有 600ms 防抖窗口，
+ * 直接关窗会丢掉最后一次编辑。渲染过程始终把当前工程挂在 window.__lcProject 上，
+ * 这里在 beforeunload / pagehide 时同步写一次。 */
+(function () {
+  try {
+    if (typeof window === "undefined" || !window.addEventListener) return;
+    const __lcFlush = function () {
+      try {
+        const pj = window.__lcProject;
+        if (!pj || typeof localStorage === "undefined") return;
+        localStorage.setItem("perfboard-autoroute-project", JSON.stringify(pj));
+      } catch (e) {}
+    };
+    window.addEventListener("beforeunload", __lcFlush);
+    window.addEventListener("pagehide", __lcFlush);
+  } catch (e) {}
+})();
+/* 位号重命名：同步网表节点、pinInfo、导入元件引用与约束引用，连接不丢（审查报告 F05）。
+ * 位号在导入/布线里同时是显示名与电气主键，只改 components[].name 会让
+ * Io() 找不到网表里的旧名字，连接静默消失。改名必须是一次原子操作。 */
+function __lcRenameRef(pj, from, to) {
+  if (!pj || !from || !to || from === to) return pj;
+  const im = pj.importState || {};
+  const nets = (im.nets || []).map(function (n) {
+    return {
+      ...n,
+      nodes: (n.nodes || []).map(function (nd) { return nd.ref === from ? { ...nd, ref: to } : nd; })
+    };
+  });
+  const pi = Object.assign({}, im.pinInfo);
+  if (Object.prototype.hasOwnProperty.call(pi, from)) { pi[to] = pi[from]; delete pi[from]; }
+  const comps = (im.components || []).map(function (c) {
+    return c.ref === from ? { ...c, ref: to } : c;
+  });
+  const constraints = (pj.constraints || []).map(function (k) {
+    const nk = Object.assign({}, k);
+    if (nk.componentRef === from) nk.componentRef = to;
+    if (nk.componentName === from) nk.componentName = to;
+    return nk;
+  });
+  return {
+    ...pj,
+    components: (pj.components || []).map(function (c) { return c.name === from ? { ...c, name: to } : c; }),
+    constraints: constraints,
+    importState: { ...im, nets: nets, pinInfo: pi, components: comps },
+    routing: { ...(pj.routing || {}), drc: void 0, diagnostics: void 0 }
+  };
+}
+/* 重新导入后核对既有模型：脚数增长（DIP-8 → DIP-14）时必须按新声明重建脚位，
+ * 否则多出来的脚没有孔位、连接被静默丢弃（审查报告 F25）。
+ * 保留位置 / 旋转 / 安装状态，只换封装几何。 */
+function __lcReconcileImportedModels(pj) {
+  const out = [], warnings = [];
+  let changed = false;
+  const im = (pj && pj.importState) || {};
+  const recs = im.components || [], pi = im.pinInfo || {};
+  ((pj && pj.components) || []).forEach(function (c) {
+    if (!c) { out.push(c); return; }
+    let imp = null;
+    for (let i = 0; i < recs.length; i += 1) {
+      if (recs[i] && recs[i].ref === c.name) { imp = recs[i]; break; }
+    }
+    if (!imp) { out.push(c); return; }
+    let want = Math.max(Number(imp.declaredPinCount) || 0, 0);
+    const info = pi[c.name];
+    if (info && typeof info === "object") {
+      Object.keys(info).forEach(function (k) {
+        const v = Number(k);
+        if (Number.isInteger(v) && v > want) want = v;
+      });
+    }
+    const have = (c.pinOffsets || []).length;
+    if (!want || want <= have || __lcTriKinds[c.kind]) { out.push(c); return; }
+    const model = vA(imp, want), base = sx(model.kind, model.pinCount);
+    if (!base) { out.push(c); return; }
+    const S = {
+      kind: base.kind,
+      pinCount: model.pinCount ?? base.pinCount,
+      leadSpacing: Lo(base.kind, model.leadSpacing ?? base.leadSpacing, "leadSpacing"),
+      rowSpacing: Lo(base.kind, model.rowSpacing ?? base.rowSpacing, "rowSpacing"),
+      sameSidePitch: Lo(base.kind, base.sameSidePitch, "sameSidePitch")
+    };
+    out.push(Object.assign({}, c, {
+      kind: base.kind, pinCount: S.pinCount,
+      leadSpacing: S.leadSpacing, rowSpacing: S.rowSpacing, sameSidePitch: S.sameSidePitch,
+      pinOffsets: Qf(S)
+    }));
+    changed = true;
+    warnings.push("导入模型已更新：" + c.name + " 的引脚由 " + have + " 个增加到 " + S.pinCount +
+      " 个（" + String(imp.packageName || imp.footprint || "") + "），位置已保留，请重新布线。");
+  });
+  return { components: out, changed: changed, warnings: warnings };
+}
 /* 三极管脚按「模型的实际引脚排布」落孔。
  * 详见下方 __lcArrangePlan 的注释。这里只做「就地写回」的兼容入口（测试/脚本用）；
- * 真实状态流走 __lcArrangeApply / __lcArrangeDeferred，避免渲染期偷偷改工程。 */
+ * 真实状态流走 __lcArrangeApply，避免渲染期偷偷改工程。 */
 function __lcArrangeLeads(c) {
   try {
     var pl = __lcArrangePlan(c);
@@ -343,14 +569,14 @@ function __lcArrangeLeads(c) {
  * 而 TO-92 实物的引脚顺序是 E-B-C（平面对自己、引脚朝下，从左到右）—— 基极在中间。
  * 做法：把脚号按角色映射到模型的物理槽位；三个孔的集合不变，只重排归属，
  * `position` 同步平移，锚点仍落在脚 1 的孔上。幂等。 */
-function __lcArrangePlan(c) {
+function __lcArrangePlan(c, project = null) {
   try {
     if (!c || !__lcTriKinds[c.kind]) return null;
     var offs = c.pinOffsets || [];
     if (offs.length !== 3 || !c.position) return null;
     var order = String(__lcPinOrderPresets[c.kind] || "").toUpperCase();
     if (order.length !== 3) return null;
-    var names = __lcPinNamesOf(c);
+    var names = __lcPinNamesOf(c, project);
     if (!names || names.length !== 3) return null;
     var i, s, slot = [-1, -1, -1], used = [0, 0, 0];
     for (i = 0; i < 3; i += 1) {
@@ -390,16 +616,21 @@ function __lcArrangePlan(c) {
  * 「孔位归属变了、界面却还显示检查通过」。 */
 function __lcArrangeApply(pj) {
   if (!pj || !pj.components) return pj;
-  var moved = [], comps = [], i;
+  var moved = [], comps = [], changed = false, i;
   for (i = 0; i < pj.components.length; i += 1) {
     var c = pj.components[i];
-    var pl = __lcArrangePlan(c);
+    var pl = __lcArrangePlan(c, pj);
     if (!pl) { comps.push(c); continue; }
     comps.push(Object.assign({}, c, { position: pl.position, pinOffsets: pl.pinOffsets }));
+    changed = true;
     if (c.mounted) moved.push(c.name || c.id);
   }
-  if (!moved.length) return pj;
+  if (!changed) return pj;
   var rt = pj.routing || {};
+  if (!moved.length) return {
+    ...pj, components: comps,
+    routing: { ...rt, drc: void 0, diagnostics: void 0 }
+  };
   var keep = (rt.warnings || []).filter(function (x) {
     return String(x).indexOf("引脚位置已改变") < 0 && String(x).indexOf("三极管引脚排布已迁移") < 0;
   });
@@ -411,30 +642,6 @@ function __lcArrangeApply(pj) {
         "）：原走锡 / 跳线还在旧孔上，请重跑 DRC 或重新布线。"])
     }
   };
-}
-/* 渲染期只做只读检查；真要迁移就丢进 commit（下一拍），不在渲染里改状态。 */
-function __lcArrangeDeferred(pj) {
-  try {
-    if (!pj || !pj.components || !pj.components.length) return;
-    var key = "";
-    for (var i = 0; i < pj.components.length; i += 1) {
-      var c = pj.components[i];
-      key += (c.id || "") + ":" + (c.pinOrder || "") + ":" +
-        (c.pinOffsets || []).join("|") + ";";
-    }
-    if (window.__lcArrangeKey === key) return;
-    window.__lcArrangeKey = key;
-    var need = false;
-    for (var j = 0; j < pj.components.length; j += 1) {
-      if (__lcArrangePlan(pj.components[j])) { need = true; break; }
-    }
-    if (!need) return;
-    setTimeout(function () {
-      if (typeof window.__lcCommit === "function") {
-        window.__lcCommit(function (p) { return __lcArrangeApply(p); });
-      }
-    }, 0);
-  } catch (e) {}
 }
 function __lcArrangeAll(pj) {
   var cs = (pj && pj.components) || [];
@@ -650,7 +857,13 @@ function __lcLedTopoIndex(ref) {
 function __lcLedCathodeIndex(ref, names, n) {
   try {
     if (n === 2 && ref) {
-      var quirky = /LED[-_ ]?TH[-_ ]?R|LED_TH[-_ ]?3mm|LED-TH/i.test(__lcPkgText(__lcCompByName(ref)));
+      var project = window.__lcProject || {};
+      var imported = ((project.importState && project.importState.components) || []).find(function (component) {
+        return component.ref === ref;
+      });
+      var quirky = !!(imported && /\.enet$/i.test(String(imported.sourceFile || "")) &&
+        /^LED_TH-(?:R_)?3mm$/i.test(String(imported.packageName || "")) &&
+        names && String(names[0]).toUpperCase() === "C" && String(names[1]).toUpperCase() === "A");
       var hasName = false;
       if (names && names.length) {
         for (var i = 0; i < names.length; i += 1) {

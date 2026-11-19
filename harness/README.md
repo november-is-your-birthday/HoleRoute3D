@@ -104,6 +104,8 @@ node harness/ablate.js
 
 ## 注意
 
+- `node patches/tests/review_workflows.js` 验证旧线路分块续接、稀疏脚数、加载/编辑/撤销与 LED 来源兼容规则；`node harness/review_verify.cjs` 验证上一轮修复场景。两者均执行真实主包业务函数，DOM 与状态提交环境由 `app-sandbox.cjs` 隔离提供，不代替桌面交互检查。
+- 主包对用户已有线路按物理连通块规划，worker 的放置评估没有旧线路入参；三个首次布线 fixture 另外验证主包与 worker 的指标一致。
 - 主包 `Y4()` 与 worker `pn()` 是**两份同构实现**，改算法必须两处同步，否则放置评估与实际布线会不一致。
 - `baseline.p0.json` / `p1` / `p3` 是各阶段的存档，用于回溯；`baseline.json` 是当前基准。
 - 打包前请确认 `node --check` 两个 bundle 都通过。

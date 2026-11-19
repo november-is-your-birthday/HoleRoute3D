@@ -120,8 +120,10 @@ assert(String(holeOf(manual, 2)) === '3,3', 'E 落到槽位 0 的孔 3,3（实�
 
 /* ---------- 7) 静态接线 ---------- */
 assert(bundle.indexOf('function __lcArrangeLeads(') >= 0, '存在引脚排布校正函数');
-assert(bundle.indexOf('__lcArrangeDeferred(i);') >= 0,
-  '主渲染只做延迟迁移（不在渲染期直接改工程）');
+assert(bundle.indexOf('__lcArrangeDeferred') < 0,
+  '主渲染不再调度自动迁移');
+assert(bundle.indexOf('kO(rt,__lcArrangeApply(at))') >= 0,
+  '引脚调整与编辑使用同一次提交');
 assert(bundle.indexOf('function __lcArrangeApply(') >= 0, '存在返回新工程对象的显式迁移');
 assert(bundle.indexOf('三极管引脚排布已迁移') >= 0, '迁移已布线引脚时作废 DRC 并写明受影响元件');
 assert(bundle.indexOf('__lcPinOrderPresets[c.kind]') >= 0, '物理槽位顺序取自模型的引脚排布');
