@@ -164,9 +164,25 @@ function __lcPinPlanTag(out, from) {
 function __lcPinNamePlan(kind, pinInfoEntry, pinOrder, pinCount, pkg) {
   var n = Math.max(1, Number(pinCount) || 0);
   var out = [], i;
-  /* 1) 网表自带引脚名（KiCad 的 pinInfo 最准）
+  /* 封装族只在「三脚」时才算三极管：SOT-23 也有六脚版本（SOT-23-6），
+   * 那种是芯片，不能套 B-E-C。 */
+  var tri = !!__lcTriKinds[kind] || (!!__lcPkgPresets[pkg] && n === 3);
+  /* 1) 用户在属性面板手选的脚序 = 显式覆盖，优先级最高。
+   *    用户点过手选，就是发现自动判定（含网表脚名）不对才来改的；
+   *    旧实现把网表名字排在手选前面，结果下拉选了 EBC、3D 和面板却还是 BEC，
+   *    「以为改了其实没改」。网表原始脚名保留下来用于对照（见 __lcTriPinTable）。
+   *    脚序短于实际脚数时，多出来的脚退回脚号，不编造角色。 */
+  if (tri) {
+    var key = __lcPinOrderOf(pinOrder);
+    if (key) {
+      out = [];
+      for (i = 0; i < n; i += 1) out.push(key.charAt(i) || String(i + 1));
+      return __lcPinPlanTag(out, "manual");
+    }
+  }
+  /* 2) 网表自带引脚名（KiCad 的 pinInfo）
    *    注意：嘉立创 / Protel 导入器会把引脚名合成为脚号本身（"1"/"2"/"3"），
-   *    那不是有效名字，必须继续往下走，否则手选脚序永远被短路。 */
+   *    那不是有效名字，必须继续往下走。 */
   if (pinInfoEntry && typeof pinInfoEntry === "object") {
     var names = [], real = false;
     for (i = 1; i <= n; i += 1) {
@@ -181,21 +197,10 @@ function __lcPinNamePlan(kind, pinInfoEntry, pinOrder, pinCount, pkg) {
       return __lcPinPlanTag(names, "pinInfo");
     }
   }
-  /* 2) 用户在属性面板手选的脚序（逐脚角色，与封装无关）
-   *    封装族只在「三脚」时才算三极管：SOT-23 也有六脚版本（SOT-23-6），
-   *    那种是芯片，不能套 B-E-C。 */
-  var tri = !!__lcTriKinds[kind] || (!!__lcPkgPresets[pkg] && n === 3);
+  /* 3) 还没选脚序：三极管按封装族的常见排布标出来（黄色）。
+   *    封装认不出来时退回旧的 kind 预设。非三极管（如六脚 SOT-23-6 芯片）
+   *    不套 E/B/C，直接落到 4) 只标脚号。 */
   if (tri) {
-    var key = __lcPinOrderOf(pinOrder);
-    if (key) {
-      out = [];
-      /* 脚序短于实际脚数时，多出来的脚退回脚号，不编造角色 */
-      for (i = 0; i < n; i += 1) out.push(key.charAt(i) || String(i + 1));
-      return __lcPinPlanTag(out, "manual");
-    }
-    /* 3) 还没选脚序：先按封装族的常见排布标出来（黄色）。
-     *    封装认不出来时退回旧的 kind 预设，两者都没有就落到 4) 只标脚号。
-     *    以前这里只认 kind，SOT-23 被当成 TO-92 就得到反过来的 E/B —— 用户提的就是这一点。 */
     var pre = __lcPkgPresets[pkg] || __lcPinOrderPresets[kind];
     if (pre) {
       out = [];
@@ -209,6 +214,50 @@ function __lcPinNamePlan(kind, pinInfoEntry, pinOrder, pinCount, pkg) {
   return __lcPinPlanTag(out, "number");
 }
 
+/* 把「已有跳线」登记进规划状态：
+ *   - 两个焊点进占用表 O：新走锡不能从别的网络的跳线焊点上穿过去（审查报告 P1-1）；
+ *   - 整根跳线作为独立路由组进 M：SO() 汇总结果时会保留它（原 ID 不变），
+ *     之后的 DRC / 连通性也就看得见它；
+ *   - 焊点并进 d（按网络的已知点集），同网络可以从焊点续线。
+ * 跳线只占两端焊点 —— 跨越部分是悬空导线，不占板孔，所以不进段占用表。 */
+function __lcSeedJumpers(js, M, O, d) {
+  if (!js || !js.length) return;
+  for (var i = 0; i < js.length; i += 1) {
+    var j = js[i];
+    if (!j || !j.from || !j.to) continue;
+    var id = j.id != null && j.id !== "" ? String(j.id) : "jmpseed-" + i;
+    if (M && !M.has(id)) {
+      M.set(id, {
+        id: id, net: j.net, traces: [], jumpers: [j],
+        priority: Number.MAX_SAFE_INTEGER
+      });
+    }
+    var pts = [j.from, j.to];
+    for (var k = 0; k < 2; k += 1) {
+      if (!pts[k]) continue;
+      var key = oe(pts[k][0], pts[k][1]);
+      if (O) {
+        /* 先到者保留：孔位已被任一网络的跳线焊点占用就不再改写。
+         * 两个不同网络的跳线共用一个焊点本身就是短路，交给 DRC 去报；
+         * 这里只负责「这个孔被占了，新走锡别来」。 */
+        if (!O.get(key)) {
+          O.set(key, { net: j.net, routeId: id, priority: Number.MAX_SAFE_INTEGER });
+        }
+      }
+      if (d) {
+        /* Y4 的布线循环每轮都会重新走一遍种子登记（M 有 has(id) 保护，
+         * d 没有）—— 这里按坐标去重，避免同一焊点被重复追加成倍锚点。 */
+        var arr = d.get(j.net);
+        if (!arr) { arr = []; d.set(j.net, arr); }
+        var px = pts[k][0], pz = pts[k][1], dup = false;
+        for (var q = 0; q < arr.length; q += 1) {
+          if (arr[q][0] === px && arr[q][1] === pz) { dup = true; break; }
+        }
+        if (!dup) arr.push([px, pz]);
+      }
+    }
+  }
+}
 /* ---------- 跳线打标 / 命中 ---------- */
 function __lcTagJumper(group, jumper) {
   if (!group || !jumper) return group;
@@ -278,23 +327,38 @@ function __lcPickJumper(ev) {
  * 所以孔位换算（脚1 为锚点）与 3D 摆放（Ey 减去锚点偏移）都保持一致。
  * 角色判不出来时（名字只有 1/2/3）不动，交给用户在面板里手选脚序。
  * 本函数幂等：排好之后再跑一遍不会来回翻。 */
+/* 三极管脚按「模型的实际引脚排布」落孔。
+ * 详见下方 __lcArrangePlan 的注释。这里只做「就地写回」的兼容入口（测试/脚本用）；
+ * 真实状态流走 __lcArrangeApply / __lcArrangeDeferred，避免渲染期偷偷改工程。 */
 function __lcArrangeLeads(c) {
   try {
-    if (!c || !__lcTriKinds[c.kind]) return c;
+    var pl = __lcArrangePlan(c);
+    if (pl) { c.position = pl.position; c.pinOffsets = pl.pinOffsets; }
+  } catch (e) {}
+  return c;
+}
+/* 纯计算：要不要迁移、迁移到哪。返回 null = 不用动。
+ * 根因：网表的脚号顺序是按符号排的，3D 模型是按实物封装排的，两者可能对不上。
+ * 例：本工程 Q1 的网表是 SOT-23 口径（脚1=B、脚2=E、脚3=C），但 3D 模型是 TO-92，
+ * 而 TO-92 实物的引脚顺序是 E-B-C（平面对自己、引脚朝下，从左到右）—— 基极在中间。
+ * 做法：把脚号按角色映射到模型的物理槽位；三个孔的集合不变，只重排归属，
+ * `position` 同步平移，锚点仍落在脚 1 的孔上。幂等。 */
+function __lcArrangePlan(c) {
+  try {
+    if (!c || !__lcTriKinds[c.kind]) return null;
     var offs = c.pinOffsets || [];
-    if (offs.length !== 3 || !c.position) return c;
+    if (offs.length !== 3 || !c.position) return null;
     var order = String(__lcPinOrderPresets[c.kind] || "").toUpperCase();
-    if (order.length !== 3) return c;
+    if (order.length !== 3) return null;
     var names = __lcPinNamesOf(c);
-    if (!names || names.length !== 3) return c;
+    if (!names || names.length !== 3) return null;
     var i, s, slot = [-1, -1, -1], used = [0, 0, 0];
     for (i = 0; i < 3; i += 1) {
       s = order.indexOf(String(names[i] == null ? "" : names[i]).toUpperCase());
-      if (s < 0 || used[s]) return c;
+      if (s < 0 || used[s]) return null;
       used[s] = 1;
       slot[i] = s;
     }
-    /* 当前各脚位于哪个物理槽位：偏移沿引脚方向跨度大的那一维排序 */
     var xs = [], zs = [], k;
     for (k = 0; k < 3; k += 1) { xs.push(offs[k][0]); zs.push(offs[k][1]); }
     var byX = (Math.max.apply(null, xs) - Math.min.apply(null, xs)) >=
@@ -304,7 +368,7 @@ function __lcArrangeLeads(c) {
     });
     var done = true;
     for (i = 0; i < 3; i += 1) if (ord[slot[i]] !== i) { done = false; break; }
-    if (done) return c;
+    if (done) return null;
     var next = [[0, 0], [0, 0], [0, 0]];
     for (i = 0; i < 3; i += 1) {
       next[i] = [offs[ord[slot[i]]][0], offs[ord[slot[i]]][1]];
@@ -312,18 +376,71 @@ function __lcArrangeLeads(c) {
     var d0 = [offs[ord[slot[0]]][0] - offs[0][0], offs[ord[slot[0]]][1] - offs[0][1]];
     var a = Number(c.rotation) || 0;
     var ca = Math.round(Math.cos(a)), sa = Math.round(Math.sin(a));
-    c.position = [c.position[0] + d0[0] * ca - d0[1] * sa,
-                  c.position[1] + d0[0] * sa + d0[1] * ca];
-    c.pinOffsets = next;
+    return {
+      position: [c.position[0] + d0[0] * ca - d0[1] * sa,
+                 c.position[1] + d0[0] * sa + d0[1] * ca],
+      pinOffsets: next
+    };
+  } catch (e) {
+    return null;
+  }
+}
+/* 显式迁移：返回新工程对象（不改入参）。移动了已布线的脚时，
+ * 旧的 routing.drc 结果作废，并写明受影响的元件 —— 不再出现
+ * 「孔位归属变了、界面却还显示检查通过」。 */
+function __lcArrangeApply(pj) {
+  if (!pj || !pj.components) return pj;
+  var moved = [], comps = [], i;
+  for (i = 0; i < pj.components.length; i += 1) {
+    var c = pj.components[i];
+    var pl = __lcArrangePlan(c);
+    if (!pl) { comps.push(c); continue; }
+    comps.push(Object.assign({}, c, { position: pl.position, pinOffsets: pl.pinOffsets }));
+    if (c.mounted) moved.push(c.name || c.id);
+  }
+  if (!moved.length) return pj;
+  var rt = pj.routing || {};
+  var keep = (rt.warnings || []).filter(function (x) {
+    return String(x).indexOf("引脚位置已改变") < 0 && String(x).indexOf("三极管引脚排布已迁移") < 0;
+  });
+  return {
+    ...pj, components: comps,
+    routing: {
+      ...rt, drc: void 0, diagnostics: void 0,
+      warnings: keep.concat(["三极管引脚排布已迁移（" + moved.join("、") +
+        "）：原走锡 / 跳线还在旧孔上，请重跑 DRC 或重新布线。"])
+    }
+  };
+}
+/* 渲染期只做只读检查；真要迁移就丢进 commit（下一拍），不在渲染里改状态。 */
+function __lcArrangeDeferred(pj) {
+  try {
+    if (!pj || !pj.components || !pj.components.length) return;
+    var key = "";
+    for (var i = 0; i < pj.components.length; i += 1) {
+      var c = pj.components[i];
+      key += (c.id || "") + ":" + (c.pinOrder || "") + ":" +
+        (c.pinOffsets || []).join("|") + ";";
+    }
+    if (window.__lcArrangeKey === key) return;
+    window.__lcArrangeKey = key;
+    var need = false;
+    for (var j = 0; j < pj.components.length; j += 1) {
+      if (__lcArrangePlan(pj.components[j])) { need = true; break; }
+    }
+    if (!need) return;
+    setTimeout(function () {
+      if (typeof window.__lcCommit === "function") {
+        window.__lcCommit(function (p) { return __lcArrangeApply(p); });
+      }
+    }, 0);
   } catch (e) {}
-  return c;
 }
 function __lcArrangeAll(pj) {
   var cs = (pj && pj.components) || [];
   for (var i = 0; i < cs.length; i += 1) __lcArrangeLeads(cs[i]);
   return pj;
 }
-
 /* 脚 i 落在洞洞板的哪一孔：与放置逻辑一致，脚 1 为锚点，其余按旋转后的相对位移推算 */
 function __lcPinHoleOf(c, i) {
   try {
@@ -395,6 +512,25 @@ function __lcTriPinTable(c) {
       }
       return txt;
     }
+    /* 手选生效时把网表原始脚名一并列出，供对照；免得用户分不清现在显示的是谁的口径 */
+    try {
+      var pjx = window.__lcProject || {};
+      var pix = (pjx.importState && pjx.importState.pinInfo) || {};
+      var entry = pix[c.name];
+      if (entry && typeof entry === "object") {
+        var raw = [], has = false;
+        /* 注意：循环变量不要叫 qi —— 主包里 qi 是 three.js 的材质类（class qi extends Pr），
+           同名 var 会让 lint-lc 的「只以 var 声明」启发式误报 __lcPaint 等函数。 */
+        for (var qIdx = 0; qIdx < offs.length; qIdx += 1) {
+          var qe = entry[qIdx + 1] || entry[String(qIdx + 1)];
+          var qn = qe && typeof qe === "object" ? qe.name : qe;
+          qn = qn == null ? "" : String(qn).trim();
+          if (qn && !/^\d+$/.test(qn)) has = true;
+          raw.push(qn || String(qIdx + 1));
+        }
+        if (has) txt += "　[网表脚名 " + raw.join(" ") + "，已按手选覆盖]";
+      }
+    } catch (e2) {}
     return txt + "　（" + key.split("").join("-") + "）";
   } catch (e) {
     return "";
@@ -447,27 +583,90 @@ function __lcNetToGnd(net) {
   }
   return false;
 }
-/* LED 的负极脚（0 基索引）：电路拓扑优先，引脚名兜底。
- * 为什么不能只看引脚名：立创部分 LED 符号的 C/A 名字与封装焊盘对不上。
- * 例：LED_TH-R_3mm 的 .enet 写 pin1 name=C，但该脚接的是 CD4017 的输出，
- * pin2 才是 10 颗 LED 共用、经 R5 到 GND 的一侧 —— 显然 pin2 才是负极。
- * 因此只在「一侧确定到 GND / 接电源、另一侧不是」这种可判定的情况下覆盖引脚名，
- * 两侧都判不出来时退回 __lcCathodeIndex（引脚名 → 脚号约定）。 */
+/* 按名字取元件对象（补丁内部用） */
+function __lcCompByName(ref) {
+  try {
+    var pj = window.__lcProject || {};
+    var cs = pj.components || [];
+    for (var i = 0; i < cs.length; i += 1) if (cs[i] && cs[i].name === ref) return cs[i];
+  } catch (e) {}
+  return null;
+}
+/* 该网络是不是「通向负电源」：网名以 - 开头 / VEE，或只隔一颗电阻就到这类网络。
+ * 只认这些，不把 VSS 当负电源 —— CMOS 里 VSS 就是地。 */
+function __lcNetToNeg(net) {
+  if (!net) return false;
+  if (/^-|VEE/i.test(String(net.name || ""))) return true;
+  var nds = net.nodes || [];
+  for (var i = 0; i < nds.length; i += 1) {
+    var r = String(nds[i].ref || "");
+    if (!/^R\d/i.test(r)) continue;
+    var other = String(nds[i].pin) === "1" ? "2" : "1";
+    var nm = __lcPinNetOf(r, other);
+    if (nm && nm !== String(net.name) && /^-|VEE/i.test(nm)) return true;
+  }
+  return false;
+}
+/* 该网络是不是「通向正电源」 */
+function __lcNetToPos(net) {
+  if (!net) return false;
+  if (/VCC|VDD|^\+/i.test(String(net.name || ""))) return true;
+  var nds = net.nodes || [];
+  for (var i = 0; i < nds.length; i += 1) {
+    var r = String(nds[i].ref || "");
+    if (!/^R\d/i.test(r)) continue;
+    var other = String(nds[i].pin) === "1" ? "2" : "1";
+    var nm = __lcPinNetOf(r, other);
+    if (nm && nm !== String(net.name) && /VCC|VDD|^\+/i.test(nm)) return true;
+  }
+  return false;
+}
+/* 拓扑判负极（0 基索引），判不出返回 -1。
+ * 顺序：
+ *   1) 落在负电源一侧的是阴极（K→-5V 的接法，老规则会把「经电阻到 GND 的一侧」
+ *      误判成阴极 —— 审查报告 P2-7 的反例就是 GND→R→A、K→-5V）；
+ *   2) 落在正电源一侧的是阳极，另一侧是阴极；
+ *   3) 只有一侧经电阻到 GND：该侧是阴极（限流电阻在负极侧的常见画法）。
+ * 拓扑只能当证据、不能当真理 —— 调用方决定它和脚名谁说了算。 */
+function __lcLedTopoIndex(ref) {
+  var a = __lcNetByName(__lcPinNetOf(ref, 1));
+  var b = __lcNetByName(__lcPinNetOf(ref, 2));
+  var na = __lcNetToNeg(a), nb = __lcNetToNeg(b);
+  if (na !== nb) return na ? 0 : 1;
+  var pa = __lcNetToPos(a), pb = __lcNetToPos(b);
+  if (pa !== pb) return pa ? 1 : 0;
+  var ga = __lcNetToGnd(a), gb = __lcNetToGnd(b);
+  if (ga !== gb) return gb ? 1 : 0;
+  return -1;
+}
+/* LED 的负极脚（0 基索引）。
+ * 谁说了算：
+ *   1) 明确脚名（K / C / A）优先 —— 正确的网表就该按它画；
+ *   2) 没有真脚名（只有 1/2）时才用拓扑兜底；
+ *   3) 例外（可追踪的兼容规则）：立创 LED_TH-R_3mm / LED_TH-3mm 这套符号库的
+ *      C/A 名字与焊盘对不上（.enet 写 pin1 name=C，实际 pin1 接 CD4017 输出、
+ *      pin2 才是经 R5 到 GND 的负极侧），对该封装改用拓扑判定。
+ * 负电源电路（GND→R→A、K→-5V）不再被「到 GND = 负极」的旧启发式画反。 */
 function __lcLedCathodeIndex(ref, names, n) {
   try {
     if (n === 2 && ref) {
-      var a = __lcNetByName(__lcPinNetOf(ref, 1));
-      var b = __lcNetByName(__lcPinNetOf(ref, 2));
-      var ga = __lcNetToGnd(a), gb = __lcNetToGnd(b);
-      if (ga !== gb) return gb ? 1 : 0;
-      var va = !!(a && /VCC|VDD|^\+/i.test(String(a.name || "")));
-      var vb = !!(b && /VCC|VDD|^\+/i.test(String(b.name || "")));
-      if (va !== vb) return va ? 1 : 0;
+      var quirky = /LED[-_ ]?TH[-_ ]?R|LED_TH[-_ ]?3mm|LED-TH/i.test(__lcPkgText(__lcCompByName(ref)));
+      var hasName = false;
+      if (names && names.length) {
+        for (var i = 0; i < names.length; i += 1) {
+          var t = String(names[i] == null ? "" : names[i]).toUpperCase();
+          if (t === "K" || t === "C" || t === "A") { hasName = true; break; }
+        }
+      }
+      if (quirky || !hasName) {
+        var topo = __lcLedTopoIndex(ref);
+        if (topo >= 0) return topo;
+      }
+      if (hasName) return __lcCathodeIndex(names);
     }
   } catch (e) {}
   return __lcCathodeIndex(names);
 }
-
 /* 标记用的黑：纯黑（0x000000）在深色本体上会糊成一片，这里用近黑 + 一点金属度，
  * 靠圆柱面的高光和几何凸出的轮廓把「环」显出来。 */
 function __lcInkBlack(rough) {

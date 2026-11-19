@@ -46,6 +46,9 @@ const sandbox = {
   // v3.4：继续布线的入参要经过零欧桥接注入；这里只验证「注入被调用且不改变跳线合并语义」
   __lcBridgeTraces: (p, tr) => { sandbox.__bridgeCalls = (sandbox.__bridgeCalls || 0) + 1; return tr || []; },
   f4: () => newRouting,
+  // P1-1（审查报告）：合并后统一重算 DRC。stub 的 J0 模拟「无 DRC 错误、
+  // 未连通网络以 f4 结果为准」——生产里这两个口径都来自合并后的 routing。
+  J0: () => ({ drc: { errors: [] }, failedNetDetails: [] }),
   __lcToast: () => {},
 };
 vm.createContext(sandbox);

@@ -67,10 +67,12 @@ assert(bundle.indexOf('ze(.752,.752,.075,32)') < 0, '整圈黑环已移除（360
 assert(bundle.indexOf('color:16777215})') < 0 || bundle.indexOf('__lcLedBar') < 0,
   '旧的白色阴极条已移除');
 
-/* ---------- 3) LED 负极：电路拓扑优先于符号引脚名 ----------
-   真实工程（Netlist_Schematic2）：U2=CD4017，十个输出分别接 LED 的脚 1；
-   十颗 LED 的脚 2 并接到 $1N37，再经 R5 到 GND。
-   所以脚 2 才是负极 —— 尽管 .enet 里 pin1 的符号名叫 C。 */
+/* ---------- 3) LED 负极：明确脚名优先；拓扑只在没有真脚名时兜底 ----------
+   审查报告 P2-7：老实现用「哪侧经电阻到 GND」覆盖明确 K/A，在负电源电路
+   （GND→R→A、K→-5V）里会把负极画反。现在：
+     明确脚名 > 拓扑（仅当没有真脚名）；
+   例外（可追踪兼容规则）：立创 LED_TH-R_3mm 系列符号的 C/A 与焊盘对不上，
+   对这类封装仍按拓扑判定。 */
 const t2 = { String, Array, Math, Object, console, window: {} };
 vm.createContext(t2);
 vm.runInContext(
@@ -78,8 +80,13 @@ vm.runInContext(
   grabFn(bundle, 'function __lcPinNetOf(') +
   grabFn(bundle, 'function __lcNetByName(') +
   grabFn(bundle, 'function __lcNetToGnd(') +
+  grabFn(bundle, 'function __lcNetToNeg(') +
+  grabFn(bundle, 'function __lcNetToPos(') +
+  grabFn(bundle, 'function __lcPkgText(') +
+  grabFn(bundle, 'function __lcCompByName(') +
+  grabFn(bundle, 'function __lcLedTopoIndex(') +
   grabFn(bundle, 'function __lcLedCathodeIndex('), t2);
-const mkProj = (nets) => ({ importState: { nets } });
+const mkProj = (nets, comps) => ({ importState: { nets }, components: comps || [] });
 const N = (name, nodes) => ({ name, nodes: nodes.map(([ref, pin]) => ({ ref, pin: String(pin) })) });
 
 /* 本工程拓扑：脚 2 经 R5 到 GND → 脚 2 是负极 */
@@ -91,10 +98,37 @@ t2.window.__lcProject = mkProj([
 const ledIdx = (ref, names, n) => vm.runInContext(
   '__lcLedCathodeIndex(__r,__n,__c)', Object.assign(t2, { __r: ref, __n: names, __c: n }));
 assert(ledIdx('LED1', ['1', '2'], 2) === 1,
-  '限流电阻在脚 2 侧到 GND → 脚 2 是负极（覆盖符号名）');
-assert(ledIdx('LED1', ['C', 'A'], 2) === 1,
-  '即使符号把脚 1 叫 C，拓扑仍能纠正为脚 2');
+  '没有真脚名时：限流电阻在脚 2 侧到 GND → 脚 2 是负极');
 assert(ledIdx('LED2', ['1', '2'], 2) === 1, '同网络的其它 LED 同样判定');
+
+/* 明确脚名优先（审查报告 P2-7 的反例：负电源电路） */
+t2.window.__lcProject = mkProj([
+  N('GND', [['R1', 1]]),
+  N('ANODE', [['R1', 2], ['LED1', 2]]),
+  N('-5V', [['LED1', 1]])
+]);
+assert(ledIdx('LED1', ['K', 'A'], 2) === 0,
+  '明确脚名优先：K 在脚 1 就按脚 1（拓扑经 R 到 GND 不再覆盖）');
+assert(ledIdx('LED1', ['A', 'K'], 2) === 1,
+  '明确脚名优先：K 在脚 2 就按脚 2');
+
+/* 已知错误库（立创 LED_TH-R_3mm 符号 C/A 与焊盘对不上）→ 仍按拓扑 */
+t2.window.__lcProject = mkProj([
+  N('$1N36', [['U2', 1], ['LED9', 1]]),
+  N('$1N37', [['LED9', 2], ['R5', 2]]),
+  N('GND', [['R5', 1], ['U2', 8]])
+], [{ name: 'LED9', footprint: 'LED_TH-3mm', kind: 'led' }]);
+assert(ledIdx('LED9', ['C', 'A'], 2) === 1,
+  '立创 LED_TH-3mm：符号名与焊盘对不上，按拓扑取脚 2 为负极');
+
+/* 负电源电路 + 无真脚名：负电源一侧才是阴极（旧规则会画反） */
+t2.window.__lcProject = mkProj([
+  N('GND', [['R1', 1]]),
+  N('ANODE', [['R1', 2], ['LED5', 2]]),
+  N('-5V', [['LED5', 1]])
+]);
+assert(ledIdx('LED5', ['1', '2'], 2) === 0,
+  '无脚名 + 负电源：落在 -5V 的脚 1 是阴极（不是「经 R 到 GND」的那侧）');
 
 /* 负极直接接 GND 的情形 */
 t2.window.__lcProject = mkProj([

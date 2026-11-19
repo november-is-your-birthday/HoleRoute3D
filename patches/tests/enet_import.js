@@ -89,7 +89,10 @@ assert(eq(p1.pinInfo.LED1, { 1: { name: 'C', type: '' }, 2: { name: 'A', type: '
   'LED 的引脚名 C/A 原样保留（' + JSON.stringify(p1.pinInfo.LED1) + '）');
 assert(p1.components.find(c => c.ref === 'LED1').category === 'Device:LED', 'LED 归为 Device:LED');
 assert(p1.components.find(c => c.ref === 'PR1').category === 'Device:R_Potentiometer', 'PR 归为电位器');
-assert(p1.components.find(c => c.ref === 'U1').category === 'Socket:DIP2', 'U1（样本只给 2 脚）→ Socket:DIP2');
+/* P1-4（审查报告）：PDIP-8 只导出脚 1、8 时，物理脚数按封装/最大脚号取 8，
+   不再生成 2 脚模型把脚 8 的网络连接丢掉。 */
+assert(p1.components.find(c => c.ref === 'U1').category === 'Socket:DIP',
+  'U1（PDIP-8 只导出脚 1、8）→ Socket:DIP（8 脚口径，不再塌成 DIP2）');
 
 /* ---------- 2) 网络反向聚合 ---------- */
 const names = p1.nets.map(n => n.name).sort();

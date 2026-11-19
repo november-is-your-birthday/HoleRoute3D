@@ -829,7 +829,7 @@ function __lcEnetCategory(ref, value, fp, n) {
   return "Unknown:" + String(f || v || "Generic").replace(/\s+/g, "_");
 }
 function __lcEnet(obj, fileName) {
-  var out = { components: [], nets: [], pinInfo: {}, warnings: [] };
+  var out = { components: [], nets: [], pinInfo: Object.create(null), warnings: [] };
   var src = fileName || "enet";
   var comps = obj && obj.components;
   if (!comps || typeof comps !== "object" || Array.isArray(comps)) {
@@ -846,8 +846,11 @@ function __lcEnet(obj, fileName) {
     });
   }
   var ids = Object.keys(comps);
-  var netMap = {}, netOrder = [];
-  var noPin = 0, renamed = 0;
+  /* 网络名 / 位号都可能撞上 Object.prototype 的属性名（constructor、toString、__proto__），
+   * 普通 {} 字典会把它们当成已存在的桶，导入直接抛
+   * "Cannot read properties of undefined (reading 'push')"。一律用无原型字典。 */
+  var netMap = Object.create(null), netOrder = [];
+  var noPin = 0, renamed = 0, dropped = 0;
   for (var i = 0; i < ids.length; i += 1) {
     var it = comps[ids[i]] || {};
     var pr = it.props || {};
@@ -863,7 +866,7 @@ function __lcEnet(obj, fileName) {
     if (!value) value = dev;
 
     /* ---- 引脚：先收集，再排序重编号 ---- */
-    var raw = {}, nums = [], words = [];
+    var raw = Object.create(null), nums = [], words = [];
     var pm = it.pinInfoMap;
     if (pm && typeof pm === "object") {
       var pkeys = Object.keys(pm);
@@ -881,7 +884,7 @@ function __lcEnet(obj, fileName) {
     }
     nums.sort(function (a, b) { return a - b; });
     words.sort(function (a, b) { return String(a).localeCompare(String(b), void 0, { numeric: true }); });
-    var map = {}, next = 1;
+    var map = Object.create(null), next = 1;
     nums.forEach(function (x) { map[String(x)] = String(x); if (x >= next) next = x + 1; });
     words.forEach(function (w) {
       /* 字母脚号（A/B、K/A 之类）排到数字脚号之后，与 __lcProtel 的重编号规则一致 */
@@ -890,14 +893,32 @@ function __lcEnet(obj, fileName) {
       renamed += 1;
     });
 
-    var info = {};
+    var info = Object.create(null);
     var rawNums = Object.keys(raw);
-    var pinCount = rawNums.length;
+    /* 物理脚数不能只按条目数算：DIP-8 只导出脚 1、8 两条时旧逻辑生成两脚模型，
+     * 脚 8 的网络连接在 Io() 里被静默丢弃（审查报告 P1-4）。
+     * 综合「封装声明脚数、最大数字脚号、导出条目数、字母脚重编号后的尾号」取最大。 */
+    var maxNum = 0;
+    nums.forEach(function (x) { if (x > maxNum) maxNum = x; });
+    var pkgN = 0;
+    try {
+      if (typeof __lcMSPkgPins === "function") {
+        pkgN = __lcMSPkgPins(fp, ref.replace(/[^A-Za-z]/g, "")) || 0;
+      }
+    } catch (e0) {}
+    var pinCount = Math.max(pkgN || 0, maxNum || 0, rawNums.length, next - 1);
     for (var r = 0; r < rawNums.length; r += 1) {
       var rn = rawNums[r];
       var pvo = raw[rn] || {};
       var nn = map[rn];
-      if (!nn) continue;
+      if (!nn) {
+        dropped += 1;
+        out.warnings.push({
+          fileName: src,
+          message: "元件 " + ref + " 的引脚 " + rn + " 无法映射到模型脚号，其网络连接已被丢弃，请检查网表。"
+        });
+        continue;
+      }
       var nm = pvo.name == null ? "" : String(pvo.name).trim();
       var typ = "";
       if (pvo.props && pvo.props["Pin Type"]) typ = String(pvo.props["Pin Type"]);
@@ -934,6 +955,9 @@ function __lcEnet(obj, fileName) {
   }
   if (renamed) {
     out.warnings.push({ fileName: src, message: "有 " + renamed + " 个字母脚号（如 A/B、K/A）已按顺序重编号为数字，引脚名仍按原名显示。" });
+  }
+  if (dropped) {
+    out.warnings.push({ fileName: src, message: "共有 " + dropped + " 个引脚无法映射到模型，相关网络连接被丢弃（详见上方逐脚警告）。" });
   }
   return out;
 }

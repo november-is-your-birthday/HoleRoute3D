@@ -295,7 +295,7 @@ assert(!st.some(x => x.hint), '普通电阻不出现 0Ω 提示');
 /* ---------- 6) v3.4.2：虚拟桥接不能落盘，也不能被 DRC 当成真铜箔 ---------- */
 assert(bundle.indexOf('t=__lcStripBridges(t);') >= 0, 'DRC 入口兜底过滤残留的假桥接');
 assert(bundle.indexOf('const Zt=__lcStripBridges(f4(yt,zt))') >= 0, '自动布线结果里剔掉假桥接');
-assert(bundle.indexOf('var Zt=__lcStripBridges(f4(pl,Er(Q)))') >= 0, '继续布线结果里剔掉假桥接');
+assert(bundle.indexOf('var Zt=__lcStripBridges(f4(Object.assign({},pl,{failedNets:[]}),Er(Q)))') >= 0, '继续布线结果里剔掉假桥接');
 
 const stBox = { Math, JSON, String, Number, Array, Object, console };
 vm.createContext(stBox);

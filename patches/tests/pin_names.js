@@ -46,9 +46,11 @@ const res = [];
 const assert = (cond, msg) => { res.push((cond ? 'PASS ' : 'FAIL ') + msg); if (!cond) process.exitCode = 1; };
 const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
-// 1) 网表 pinInfo 最优先
-assert(eq(plan('to92', { 1: { name: 'E' }, 2: { name: 'B' }, 3: { name: 'C' } }, 'CBE', 3), ['E', 'B', 'C']),
-  'pinInfo 优先于手选脚序');
+// 1) 手选脚序 = 显式覆盖，最优先（审查报告 P2-6：不能让人以为改了其实没改）
+assert(eq(plan('to92', { 1: { name: 'E' }, 2: { name: 'B' }, 3: { name: 'C' } }, 'CBE', 3), ['C', 'B', 'E']),
+  '手选脚序覆盖网表 pinInfo（用户点过就以手选为准）');
+assert(vm.runInContext('__lcPinNamePlan("to92",{1:{name:"E"},2:{name:"B"},3:{name:"C"}},"CBE",3).__lcFrom', sandbox) === 'manual',
+  '覆盖后来源标记 manual');
 
 // 1b) 嘉立创 / Protel 导入器把引脚名合成为脚号本身（"1"/"2"/"3"）——不算有效名字，
 //     必须让手选脚序生效，否则三极管永远标不出 E/C/B。
@@ -58,8 +60,8 @@ assert(eq(plan('to92', { 1: { name: '1' }, 2: { name: '2' }, 3: { name: '3' } },
   '合成脚号名且无手选脚序时按本封装常见排布标（不是一片 1/2/3）');
 assert(vm.runInContext('__lcPinNamePlan("to92",{1:{name:"1"},2:{name:"2"},3:{name:"3"}},null,3).__lcFrom', sandbox) === 'preset',
   '合成脚号名仍归入 preset（黄色），不冒充网表给的名字');
-assert(eq(plan('to92', { 1: { name: '1' }, 2: { name: 'B' }, 3: { name: '3' } }, 'CBE', 3), ['1', 'B', '3']),
-  '混有真实名字时以 pinInfo 为准（真实名优先于手选脚序）');
+assert(eq(plan('to92', { 1: { name: '1' }, 2: { name: 'B' }, 3: { name: '3' } }, 'CBE', 3), ['C', 'B', 'E']),
+  '混有真实名字时手选仍然生效（显式覆盖）');
 
 // 2) pinInfo 只有部分名字 → 有名字的用名字，其余用脚号
 assert(eq(plan('to92', { 1: { name: 'E' } }, null, 3), ['E', '2', '3']),

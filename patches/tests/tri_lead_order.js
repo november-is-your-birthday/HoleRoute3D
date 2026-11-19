@@ -43,7 +43,9 @@ vm.runInContext(
   grabFn(bundle, 'function __lcPinPlanTag(') +
   grabFn(bundle, 'function __lcPinNamePlan(') +
   grabFn(bundle, 'function __lcPinNamesOf(') +
+  grabFn(bundle, 'function __lcArrangePlan(') +
   grabFn(bundle, 'function __lcArrangeLeads(') +
+  grabFn(bundle, 'function __lcArrangeApply(') +
   grabFn(bundle, 'function __lcPinHoleOf('), box);
 
 const arrange = (c) => vm.runInContext('__lcArrangeLeads(__c)', Object.assign(box, { __c: c }));
@@ -118,8 +120,50 @@ assert(String(holeOf(manual, 2)) === '3,3', 'E 落到槽位 0 的孔 3,3（实�
 
 /* ---------- 7) 静态接线 ---------- */
 assert(bundle.indexOf('function __lcArrangeLeads(') >= 0, '存在引脚排布校正函数');
-assert(bundle.indexOf('__lcArrangeAll(i);') >= 0, '主渲染每次都会校正排布');
+assert(bundle.indexOf('__lcArrangeDeferred(i);') >= 0,
+  '主渲染只做延迟迁移（不在渲染期直接改工程）');
+assert(bundle.indexOf('function __lcArrangeApply(') >= 0, '存在返回新工程对象的显式迁移');
+assert(bundle.indexOf('三极管引脚排布已迁移') >= 0, '迁移已布线引脚时作废 DRC 并写明受影响元件');
 assert(bundle.indexOf('__lcPinOrderPresets[c.kind]') >= 0, '物理槽位顺序取自模型的引脚排布');
 
+/* ---------- 7) __lcArrangeApply：显式迁移的工程级语义（审查报告 P1-3） ---------- */
+{
+  const c1 = {
+    /* 手选 BEC（脚1=B）+ 默认孔位 → 与 TO-92 实物 E-B-C 不一致，需要迁移 */
+    kind: 'to92', label: 'Q', name: 'Q1', value: 'S8050 NPN', id: 'q1id',
+    pinCount: 3, pinOffsets: [[-1, 0], [0, 0], [1, 0]], pinOrder: 'BEC',
+    position: [10, 10], rotation: 0, mounted: true, extraField: 'keep-me'
+  };
+  const proj = {
+    components: [c1],
+    routing: { traces: [], jumpers: [], drc: { errors: [{ code: 'X' }] }, warnings: ['旧警告'] }
+  };
+  const out = vm.runInContext('__lcArrangeApply(__p)', Object.assign(box, { __p: proj }));
+
+  assert(out !== proj, '__lcArrangeApply 返回新工程对象，不改入参');
+  assert(proj.components[0].pinOffsets[0][0] === -1 && proj.components[0].position[0] === 10,
+    '入参工程的元件保持原样（渲染期不再偷偷改工程）');
+  assert(out.components[0].extraField === 'keep-me',
+    '迁移复制保留元件全部字段（Object.assign 展开）');
+  assert(out.components[0].position[0] === 11,
+    '迁移后 position 同步平移（锚点仍落在脚 1 孔上，实际 x=' + out.components[0].position[0] + '）');
+  assert(out.routing.drc === undefined && out.routing.diagnostics === undefined,
+    '迁移已布线引脚时旧 DRC 结果作废（不再显示过期的「检查通过」）');
+  assert((out.routing.warnings || []).some(w => String(w).indexOf('三极管引脚排布已迁移') >= 0 && String(w).indexOf('Q1') >= 0),
+    '警告写明受影响元件（Q1）');
+  assert((out.routing.warnings || []).some(w => String(w) === '旧警告'),
+    '无关的旧警告保留');
+
+  // 幂等：已迁移的工程再 apply 一次，引用不变（没有可迁移项时原样返回）
+  const again = vm.runInContext('__lcArrangeApply(__p2)', Object.assign(box, { __p2: out }));
+  assert(again === out, '已迁移工程再次 apply 原样返回（幂等）');
+
+  // 未挂装的元件迁移不产生警告（没有附着铜箔的顾虑）
+  const c2 = Object.assign({}, c1, { name: 'Q2', mounted: false });
+  const proj2 = { components: [c2], routing: { traces: [], warnings: [] } };
+  const out2 = vm.runInContext('__lcArrangeApply(__p3)', Object.assign(box, { __p3: proj2 }));
+  assert(!(out2.routing.warnings || []).some(w => String(w).indexOf('三极管引脚排布已迁移') >= 0),
+    '未挂装元件迁移不写警告');
+}
 console.log(res.join('\n'));
 console.log(res.every((r) => r.startsWith('PASS')) ? 'ALL PASS' : 'HAS FAILURES');

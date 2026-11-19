@@ -99,9 +99,11 @@ assert(eq(plan('to92', synth, null, 3), ['E', 'B', 'C']), '不传 pkg 参数也�
 assert(R('__lcPinNamePlan("to92",{1:{name:"1"},2:{name:"2"},3:{name:"3"}},null,3,"sot23").__lcFrom') === 'preset',
   '封装预设仍标记 preset（黄色，表示「没确认过」）');
 
-/* ---------- 3) 优先级不变：网表名 > 手选 > 预设 ---------- */
+/* ---------- 3) 优先级：手选（显式覆盖）> 网表名 > 预设 ---------- */
 assert(eq(plan('to92', { 1: { name: 'B' }, 2: { name: 'E' }, 3: { name: 'C' } }, null, 3, 'to92'), ['B', 'E', 'C']),
-  '网表给了真名就用真名，不被封装预设覆盖');
+  '没手选时网表真名不被封装预设覆盖');
+assert(eq(plan('to92', { 1: { name: 'B' }, 2: { name: 'E' }, 3: { name: 'C' } }, 'EBC', 3, 'sot23'), ['E', 'B', 'C']),
+  '手选覆盖网表真名（审查报告 P2-6：显式覆盖）');
 assert(eq(plan('to92', synth, 'EBC', 3, 'sot23'), ['E', 'B', 'C']),
   '手选脚序优先于封装预设（用户说 1=E 就是 1=E）');
 assert(R('__lcPinNamePlan("to92",{1:{name:"1"},2:{name:"2"},3:{name:"3"}},"BEC",3,"sot23").__lcFrom') === 'manual',

@@ -404,6 +404,13 @@ src = rep(src, 'ht&&Tt&&z&&!z.mounted&&!df(z.position,Tt)&&c(ht,Tt)',
           'M15 commit drag on mounted components')
 
 # v3.3: 撤销步数上限 50 → 可配置（默认 200）+ 重做栈
+# v3.5.6：le() 在新建/打开工程时调用，原来只清撤销栈不清重做栈，
+# 「工程 A 编辑→撤销→新建工程 B→Ctrl+Shift+Z」会把整个工程换回 A（审查报告 P1-2）。
+# 现在两栈一起清，并换一枚工程令牌；重做前校验令牌，跨工程的重做直接拒绝。
+src = rep(src, 'function le(){v.current=[],S(0)}',
+          'function le(){v.current=[],window.__lcRedo=[],'
+          'window.__lcHistoryToken=(window.__lcHistoryToken||0)+1,S(0)}',
+          'H0 clear redo stack on project switch')
 src = rep(src, 'v.current=[...v.current.slice(-49),rt],S(v.current.length),G(Ft)',
           'v.current=[...v.current.slice(-(__lcHistoryLimit()-1)),rt],window.__lcRedo=[],S(v.current.length),G(Ft)',
           'H1 history limit + redo reset')
@@ -411,15 +418,18 @@ src = rep_fn(src, 'function xe(){',
              'function xe(){'
              'const Q=v.current.at(-1);'
              'if(!Q)return;'
-             '(window.__lcRedo||(window.__lcRedo=[])).push(e.current);'
+             'var st=window.__lcRedo||(window.__lcRedo=[]);'
+             'if(st.__lcToken!==(window.__lcHistoryToken||0)){st.length=0;st.__lcToken=window.__lcHistoryToken||0}'
+             'st.push(e.current);'
              'v.current=v.current.slice(0,-1),S(v.current.length),G(Q),h(void 0)}'
              'function __lcRedoStep(){'
              'var st=window.__lcRedo||[];'
+             'if(st.__lcToken!==(window.__lcHistoryToken||0)){st.length=0;return!1}'
              'var Q=st.pop();'
              'if(!Q)return!1;'
              'v.current=[...v.current,e.current].slice(-__lcHistoryLimit()),S(v.current.length),G(Q),h(void 0);'
              'return!0}',
-             'H2 redo stack')
+             'H2 redo stack with project token')
 src = rep(src, 'erase:"E"},Q2={dragMoveModifier:"shift",shortcuts:Vy,theme:"light"}',
           'erase:"E",unmountAll:"Shift+U",rotateSpace:"Space",undo:"Ctrl+Z",redo:"Ctrl+Shift+Z"},'
           'Q2={dragMoveModifier:"shift",shortcuts:Vy,theme:"light"}',
@@ -566,23 +576,65 @@ NEW_CONT = '''function __lcContinueRoute(){H(Q=>{try{
   var eps=Io(Q.importState,Q.components);
   if(!eps.length)return Q;
   var oldJ=(Q.routing&&Q.routing.jumpers)||[];
-  var pl=__lcContinuePlan(Q.board,eps,Q.components,Q.routing.traces||[],oldJ,Er(Q));
-  if(!pl)return{...Q,routing:{...Q.routing,warnings:[...Q.routing.warnings,"所有网络均已连通，无需继续布线。"]}};
-  var Zt=f4(pl,Er(Q));
-  /* 洞洞板分支下 Y4() 只会新建跳线、不会保留旧的（第 7 参只在面包板用），必须在这里合并 */
-  var seen={},merged=[];
+  var oldT=(Q.routing&&Q.routing.traces)||[];
+  var pl=__lcContinuePlan(Q.board,eps,Q.components,__lcBridgeTraces(Q,oldT),oldJ,Er(Q));
+  if(!pl)return{...Q,routing:{...Q.routing,warnings:[...(Q.routing.warnings||[]),"所有网络均已连通，无需继续布线。"]}};
+  /* f4 只做约束检查（跳线上限等）。failedNets 先清零 —— 它是「合并前」的旧口径，
+     可能把已被旧跳线连上的网络报成未连通（审查报告 P1-1），下面合并后用 J0 统一重算。 */
+  var Zt=f4(Object.assign({},pl,{failedNets:[]}),Er(Q));
+  /* 洞洞板分支下 Y4 已把旧跳线登记进占用/连通（__lcSeedJumpers），结果里就带它们；
+     这里再按 net+from+to 合并去重只是兜底，保留原 ID。 */
+  var seen=Object.create(null),merged=[];
   oldJ.forEach(function(j){if(!j)return;var k=String(j.net)+"|"+j.from+"|"+j.to;if(seen[k])return;seen[k]=1;merged.push(j)});
   (Zt.jumpers||[]).forEach(function(j){if(!j)return;var k=String(j.net)+"|"+j.from+"|"+j.to;if(seen[k])return;seen[k]=1;merged.push(j)});
-  var newTrace=(Zt.traces||[]).length-(Q.routing.traces||[]).length;
-  var newJump=merged.length-oldJ.length;
-  var failed=(Zt.failedNets||[]).length;
-  var msg=failed===0
-    ?"继续布线：新增走锡 "+Math.max(0,newTrace)+" 段、跳线 "+Math.max(0,newJump)+" 条；全部网络已连通（走锡在板背面，按 T 透视可见）。"
-    :"继续布线：新增走锡 "+Math.max(0,newTrace)+" 段、跳线 "+Math.max(0,newJump)+" 条；仍有 "+failed+" 个网络未连通，已用飞线标出。";
+  var state=Object.assign({},Zt,{jumpers:merged});
+  /* 合并后统一重算 DRC / 失败网络 / 评分 / 提示。
+     旧实现在合并前算 DRC，结果既可能漏掉旧跳线造成的短路，也可能把已由旧跳线
+     连上的脚报成未连通（审查报告 P1-1 的 DRC 过期问题）。 */
+  var dq=J0(Q.board,state,eps,Q.components);
+  state.drc=dq.drc;
+  state.diagnostics={failedNetDetails:dq.failedNetDetails};
+  var failed=(state.failedNets||[]).slice();
+  (dq.failedNetDetails||[]).forEach(function(x){if(x&&x.net&&failed.indexOf(x.net)<0)failed.push(x.net)});
+  var conflicts=0;
+  ((dq.drc&&dq.drc.errors)||[]).forEach(function(er){
+    if(!er)return;
+    if(er.net&&failed.indexOf(er.net)<0)failed.push(er.net);
+    if(er.expectedNet&&failed.indexOf(er.expectedNet)<0)failed.push(er.expectedNet);
+    if(/SHORT|OVERLAP|CROSSING|OCCUPIED|CONFLICT/.test(String(er.code||"")))conflicts+=1;
+  });
+  state.failedNets=failed;
+  try{state.score=iO(Q.board,state,eps,F2(Q.board,eps,new Map,Py(Q.board)))}catch(__lse2){}
+  /* 虚拟桥接只该存在于规划入参，绝不能落盘（v3.4.2） */
+  state=__lcStripBridges(state);
+  var base=__lcStripBridges({traces:oldT,jumpers:oldJ});
+  var newTrace=Math.max(0,(state.traces||[]).length-(base.traces||[]).length);
+  var newJump=Math.max(0,(state.jumpers||[]).length-(base.jumpers||[]).length);
+  var msg;
+  if(conflicts>0){
+    msg="继续布线：新增走锡 "+newTrace+" 段、跳线 "+newJump+" 条；检测到 "+conflicts+" 处网络冲突或短路，请运行 DRC 查看并删除冲突走线。";
+  }else if(failed.length===0){
+    msg="继续布线：新增走锡 "+newTrace+" 段、跳线 "+newJump+" 条；全部网络已连通（走锡在板背面，按 T 透视可见）。";
+  }else{
+    msg="继续布线：新增走锡 "+newTrace+" 段、跳线 "+newJump+" 条；仍有 "+failed.length+" 个网络未连通，已用飞线标出。";
+  }
   setTimeout(function(){__lcToast(msg,4600)},120);
-  return{...Q,routing:{...Zt,jumpers:merged,
-    warnings:(Zt.warnings||[]).filter(function(x){return String(x).indexOf("继续布线：")<0}).concat([msg])}};
-}catch(err){return{...Q,routing:{...Q.routing,warnings:[...Q.routing.warnings,"继续布线失败："+(err&&err.message?err.message:String(err))]}}}})}'''
+  return{...Q,routing:{...state,
+    warnings:(state.warnings||[]).filter(function(x){return String(x).indexOf("继续布线：")<0}).concat([msg])}};
+}catch(err){return{...Q,routing:{...Q.routing,warnings:[...(Q.routing.warnings||[]),"继续布线失败："+(err&&err.message?err.message:String(err))]}}}})}'''
+
+# P1-1：旧跳线焊点必须参与避让。Y4 洞洞板分支只登记旧走锡（Z4），
+# 第 7 参 jumpers 原来只有面包板分支读 —— 于是继续布线的新走锡会直接从旧跳线
+# 的公共焊点上穿过去造成短路，提示却说「全部网络已连通」（审查报告 P1-1）。
+src = rep(src, 'Z4(s,M,O,C),$4(i,r,O);const T=gO(h,x);',
+          'Z4(s,M,O,C),$4(i,r,O);try{__lcSeedJumpers(c,M,O,d)}catch(__lse){}const T=gO(h,x);',
+          'R8a seed old jumpers into occupancy')
+
+# 洞洞板 rip-up 不能拆掉用户的手工跳线：纯跳线路由组（无走锡）一律保留。
+src = rep(src, '!f.traces.some(h=>h.locked)',
+          '!f.traces.some(h=>h.locked)&&!(f.jumpers&&f.jumpers.length&&f.traces.length===0)',
+          'R8b never rip up manual jumpers')
+
 src = rep_fn(src, 'function __lcContinueRoute(){', NEW_CONT, 'R8 continue route keeps jumpers')
 
 # ---------------------------------------------------------------
@@ -726,9 +778,12 @@ src = rep(src, 'window.__lcProject=i,window.__lcCommit=H;return P.jsxs("div",{cl
           'window.__lcProject=i,window.__lcCommit=H,window.__lcUnmountAll=__lcUnmountAll;return P.jsxs("div",{className:"app-shell"',
           'M11 expose unmount-all to toolbar')
 # 每次渲染顺手把三极管脚按实物排布校正一次（幂等），保证 3D、孔位、布线三者一致
+# P1-3：渲染期不再就地改工程。__lcArrangeAll 直接改 position/pinOffsets，
+# 绕过状态提交，routing.drc 仍是「检查通过」的旧结果（审查报告 P1-3）。
+# 改为只读检查 + 下一拍走 __lcCommit 显式迁移（迁移会作废 DRC 并写明受影响元件）。
 src = rep(src, 'window.__lcProject=i,window.__lcCommit=H,window.__lcUnmountAll=__lcUnmountAll;return',
-          'window.__lcProject=i,window.__lcCommit=H,window.__lcUnmountAll=__lcUnmountAll,__lcArrangeAll(i);return',
-          'M12 arrange transistor leads to physical order')
+          'window.__lcProject=i,window.__lcCommit=H,window.__lcUnmountAll=__lcUnmountAll,__lcArrangeDeferred(i);return',
+          'M12 arrange transistor leads via deferred commit')
 
 # =================================================================
 # v3.4.0
@@ -786,10 +841,10 @@ src = rep(src, 'yt=Y4(Q.board,rt,Q.components,q,zt,void 0,Bt)',
           'yt=Y4(Q.board,rt,Q.components,__lcBridgeTraces(Q,q),zt,void 0,Bt)',
           'U5 autoroute passes bridges')
 # v3.4.2：DRC 不再接收虚拟走锡（原来的 U7 已删除，见下方 V4 注释）
-src = rep(src, 'var pl=__lcContinuePlan(Q.board,eps,Q.components,Q.routing.traces||[],oldJ,Er(Q));',
-          'var pl=__lcContinuePlan(Q.board,eps,Q.components,'
-          '__lcBridgeTraces(Q,Q.routing.traces||[]),oldJ,Er(Q));',
-          'U8 continue route sees bridges')
+# U8（继续布线注入零欧桥接）已并入 NEW_CONT 本体，这里只做存在性检查。
+if '__lcBridgeTraces(Q,oldT)' not in src:
+    raise SystemExit('FAIL U8 continue route sees bridges: NEW_CONT missing bridge call')
+print('  ok U8 continue route sees bridges (baked into NEW_CONT)')
 src = rep(src, 'for(var ji=0;ji<jumpers.length;ji+=1){var jm=jumpers[ji];if(jm&&jm.from&&jm.to)uni(key(jm.from),key(jm.to))}',
           'for(var ji=0;ji<jumpers.length;ji+=1){var jm=jumpers[ji];if(jm&&jm.from&&jm.to)uni(key(jm.from),key(jm.to))}'
           'var __lb=[];try{__lb=__lcBridgeLinks(pj)||[]}catch(e){__lb=[]}'
@@ -842,8 +897,8 @@ src = rep(src, 't.traces.forEach(M=>{const O=Dr(M.points),C=z2(M.net,O,h,d);',
 src = rep(src, 'const Zt=f4(yt,zt);return{...Q,routing:{...Zt,warnings:[...Zt.warnings,...Ft]}}',
           'const Zt=__lcStripBridges(f4(yt,zt));return{...Q,routing:{...Zt,warnings:[...Zt.warnings,...Ft]}}',
           'V5 strip bridge traces from autoroute result')
-src = rep(src, 'var Zt=f4(pl,Er(Q));',
-          'var Zt=__lcStripBridges(f4(pl,Er(Q)));',
+src = rep(src, 'var Zt=f4(Object.assign({},pl,{failedNets:[]}),Er(Q));',
+          'var Zt=__lcStripBridges(f4(Object.assign({},pl,{failedNets:[]}),Er(Q)));',
           'V6 strip bridge traces from continue-route result')
 # 兜底：老工程里若已残留假桥接（3.4.0/3.4.1 布线过），DRC 也当它不存在
 src = rep(src, 'function J0(i,t,e,s){const r=Zi(i),',
@@ -1151,6 +1206,30 @@ src = rep(src, OLD_TRI_LIB, NEW_TRI_LIB, 'T51 library npn/pnp transistor entries
 src = rep(src, 'value:"",pinCount:Q.pinCount,leadSpacing:Q.leadSpacing',
           'value:Q.value||"",footprint:Q.footprint||"",pinCount:Q.pinCount,leadSpacing:Q.leadSpacing',
           'T52 library placement carries value and footprint')
+
+# P2-5：位号按「前缀 + 未使用最小编号」生成。
+# 旧实现用 components.length+1 —— 添加 R1/R2/R3 再删 R2 后再加一个电阻，会得到两个 R3，
+# Io() 按名字建 Map，后一个把前一个的网络查找覆盖掉（审查报告 P2-5）。
+src = rep(src, 'function qO(i,t){return`${i.replace(/[^A-Za-z]/g,"")||"U"}${t}`}',
+          'function __lcUniqueRef(label,comps,excludeId){'
+          'var base=String(label==null?"":label).replace(/[^A-Za-z]/g,"")||"U";'
+          'var used=Object.create(null);'
+          '(comps||[]).forEach(function(c){if(c&&c.name&&(excludeId==null||c.id!==excludeId))used[String(c.name)]=1});'
+          'for(var n=1;n<100000;n+=1){var nm=base+n;if(!used[nm])return nm}'
+          'return base+"_"+Date.now()}'
+          'function qO(i,t){return`${i.replace(/[^A-Za-z]/g,"")||"U"}${t}`}',
+          'T54 unique refdes helper')
+src = rep(src, 'name:qO(Q.label,i.components.length+1)',
+          'name:__lcUniqueRef(Q.label,i.components)',
+          'T55 library placement uses unique refdes')
+
+# P1-4：_A 按「最大数字脚号」而非条目数决定模型脚数。
+# DIP-8 只导出脚 1、8 两条时旧逻辑生成两脚模型，脚 8 的端点被 Io() 丢掉。
+src = rep(src, 'Object.entries(i.pinInfo??{}).forEach(([c,f])=>{r.set(c,Object.keys(f).length)})',
+          'Object.entries(i.pinInfo??{}).forEach(([c,f])=>{var ks=Object.keys(f),mx=0;'
+          'ks.forEach(k=>{var v=Number(k);if(Number.isInteger(v)&&v>mx)mx=v});'
+          'r.set(c,Math.max(ks.length,mx))})',
+          'T56 model pin count from max pin number')
 
 # 库条目键加上 title：否则同封装的 NPN/PNP 两条目键相同（to92:3:Q），地图里互相覆盖。
 src = rep(src, 'function P3(i){return`${i.kind}:${i.pinCount??""}:${i.label}`}',
