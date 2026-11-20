@@ -1036,6 +1036,13 @@ src = rep(src,
           'onClick:()=>d&&d.onRefresh&&d.onRefresh(),children:P.jsx(h3,{size:18})}),',
           'X5 header refresh after clear button')
 
+# 6) 撤销按钮的图标换成 Undo2（向左弯钩的 ↩ 箭头）
+#    —— 原来的 RotateCcw 是逆时针圆箭头，跟刷新（RefreshCw）太像，用户分不清。
+src = rep(src,
+          'title:"撤销",disabled:!f,onClick:c,children:P.jsx(d3,{size:18})',
+          'title:"撤销",disabled:!f,onClick:c,children:P.jsx(x3,{size:18})',
+          'X6 header undo icon RotateCcw -> Undo2')
+
 # =================================================================
 # 内测版标识
 # v3.4.9 曾在顶栏品牌名右侧插过一枚红色「内测版」标签（Y1），

@@ -44,6 +44,12 @@ assert(bundle.indexOf('.header-actions .icon-text-button.lc-xray{white-space:now
 assert(bundle.indexOf('.header-actions .icon-text-button.lc-xray{width:') < 0,
   '透视按钮不再锁两格宽（72px 已去掉）');
 
+/* ---------- 4) 撤销图标换成 Undo2（↩ 弯钩箭头，区别于刷新） ---------- */
+const undoBtn = bundle.indexOf('title:"撤销",disabled:!f,onClick:c,children:P.jsx(x3,{size:18})');
+assert(undoBtn >= 0, '撤销按钮使用 Undo2 弯钩箭头图标');
+assert(bundle.indexOf('title:"撤销",disabled:!f,onClick:c,children:P.jsx(d3,{size:18})') < 0,
+  '撤销按钮不再使用 RotateCcw 圆箭头（与刷新易混）');
+
 /* ---------- 3) 文字按钮高度与邻居对齐 ---------- */
 assert(bundle.indexOf('.header-actions .icon-text-button{min-height:32px') >= 0,
   '文字按钮高度对齐顶栏图标按钮的 32px');
