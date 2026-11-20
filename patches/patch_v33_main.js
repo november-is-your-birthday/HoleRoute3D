@@ -1046,6 +1046,13 @@ __lcStyleOnce("lc-header-text-button",
   ".header-actions .icon-text-button{min-height:32px;padding:0 11px;border-radius:6px;" +
   "font-size:12px;font-weight:600;letter-spacing:.02em;line-height:1}");
 
+/* v3.5.7：透视按钮横排两字、紧凑宽度。
+ * 不加 nowrap 时按钮会被 flex 压窄，「透视」两个字竖着折行；
+ * white-space:nowrap + flex:none 保证横向单行，宽度自然收紧到刚好包住两个字。 */
+__lcStyleOnce("lc-header-xray",
+  ".header-actions .icon-text-button.lc-xray{white-space:nowrap;flex:none;" +
+  "letter-spacing:.08em}");
+
 setTimeout(function () {
   try {
     if (!document.body) return;

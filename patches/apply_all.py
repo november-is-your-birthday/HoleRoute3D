@@ -1009,15 +1009,32 @@ src = rep(src,
 
 # 3) 顶栏右侧那个「眼睛」图标按钮（透视）改成文字按钮，位置不变
 #    —— 图标没有文字时不好认，用户要求直接写字。
+#    v3.5.7：加 lc-xray 类，宽度固定为两格（72px），两个字横排不换行。
 src = rep(src,
           'P.jsx("button",{className:d&&d.isTransparentBoard?"icon-button active":"icon-button",'
           'type:"button",title:"透视",onClick:()=>d&&d.onToggleTransparent&&d.onToggleTransparent(),'
           'children:P.jsx($2,{size:18})})',
-          'P.jsx("button",{className:d&&d.isTransparentBoard?"icon-text-button active":"icon-text-button",'
+          'P.jsx("button",{className:d&&d.isTransparentBoard?"icon-text-button lc-xray active":"icon-text-button lc-xray",'
           'type:"button","aria-label":"透视板体，快捷键 T",'
           'title:"透视板体：透过板体查看背面走线（快捷键 T）",'
           'onClick:()=>d&&d.onToggleTransparent&&d.onToggleTransparent(),children:"透视"})',
           'X3 header xray icon -> text button')
+
+# 4) 刷新按钮从「工程下拉」旁边移走，挪到「清空工程」（垃圾桶）右边
+#    —— 用户要求把刷新放到删除的右边去。
+src = rep(src,
+          'P.jsx("button",{className:"icon-button",type:"button",title:"刷新",'
+          'onClick:()=>d&&d.onRefresh&&d.onRefresh(),children:P.jsx(h3,{size:18})}),',
+          '',
+          'X4 header refresh removed from old slot')
+src = rep(src,
+          'P.jsx("button",{className:"icon-button",type:"button",title:"清空工程（删除全部元件与走线）",'
+          'disabled:!i,onClick:cl,children:P.jsx(v3,{size:18})}),',
+          'P.jsx("button",{className:"icon-button",type:"button",title:"清空工程（删除全部元件与走线）",'
+          'disabled:!i,onClick:cl,children:P.jsx(v3,{size:18})}),'
+          'P.jsx("button",{className:"icon-button",type:"button",title:"刷新",'
+          'onClick:()=>d&&d.onRefresh&&d.onRefresh(),children:P.jsx(h3,{size:18})}),',
+          'X5 header refresh after clear button')
 
 # =================================================================
 # 内测版标识

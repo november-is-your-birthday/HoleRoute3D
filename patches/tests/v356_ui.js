@@ -1,6 +1,9 @@
 // 回归测试：v3.5.6 顶栏两处改动
 //   1. 删掉品牌名右侧的红色「内测版」徽标（保留其余内测版提示）
-//   2. 透视按钮由眼睛图标改成文字「透视」，位置不变（刷新 与 主题切换 之间）
+//   2. 透视按钮由眼睛图标改成文字「透视」
+// v3.5.7 追加：
+//   3. 透视横排两字、紧凑宽度（lc-xray + 不换行，宽度自然收紧）
+//   4. 刷新按钮移到「清空工程」（垃圾桶）右边
 'use strict';
 const fs = require('fs');
 const path = require('path');
@@ -26,9 +29,20 @@ assert(bundle.indexOf('title:"透视板体：透过板体查看背面走线（�
 
 const refresh = bundle.indexOf('title:"刷新"');
 const theme = bundle.indexOf('title:"切换深色/浅色模式"');
-assert(refresh >= 0 && theme >= 0, '顶栏仍有刷新与主题切换按钮');
-assert(refresh < xray && xray < theme, '透视按钮仍在刷新与主题切换之间（位置未变）');
+const clear = bundle.indexOf('title:"清空工程（删除全部元件与走线）"');
+const settings = bundle.indexOf('title:"设置"');
+assert(refresh >= 0 && theme >= 0 && clear >= 0 && settings >= 0, '顶栏仍有刷新/主题切换/清空/设置按钮');
+assert(xray < theme, '透视按钮在主题切换之前');
+assert(clear < refresh && refresh < settings, '刷新按钮在「清空工程」右边、设置左边');
 assert(bundle.indexOf('onToggleTransparent&&d.onToggleTransparent()') >= 0, '点击仍切到同一个透视开关');
+
+/* ---------- 3) 透视横排两字、紧凑宽度 ---------- */
+assert(bundle.indexOf('"icon-text-button lc-xray active":"icon-text-button lc-xray"') >= 0,
+  '透视按钮带 lc-xray 类（样式钩子）');
+assert(bundle.indexOf('.header-actions .icon-text-button.lc-xray{white-space:nowrap;flex:none') >= 0,
+  '透视按钮禁止换行、不被 flex 压缩（宽度自然收紧）');
+assert(bundle.indexOf('.header-actions .icon-text-button.lc-xray{width:') < 0,
+  '透视按钮不再锁两格宽（72px 已去掉）');
 
 /* ---------- 3) 文字按钮高度与邻居对齐 ---------- */
 assert(bundle.indexOf('.header-actions .icon-text-button{min-height:32px') >= 0,
