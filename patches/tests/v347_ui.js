@@ -35,7 +35,7 @@ assert(bundle.indexOf('P.jsx(__lcBoardSizeField,{label:"H"') >= 0, '板高用新
 assert(bundle.indexOf('onChange:K=>S({...i,width:Jp(') < 0, '板宽不再逐键提交（旧写法已移除）');
 assert(bundle.indexOf('onChange:K=>S(i.kind==="breadboard"?M0(Jp(') < 0, '板高不再逐键提交（旧写法已移除）');
 assert(bundle.indexOf('children:"飞线层"') >= 0, '工具栏按钮文案为「飞线层」');
-assert(bundle.indexOf('children:"透视"') < 0, '工具栏不再有「透视」按钮');
+assert(bundle.indexOf('$n,{active:v,"aria-label":"透视板体') < 0, '工具栏不再有「透视」按钮');
 
 /* ---------- 2) 组件行为 ---------- */
 function makeCtx() {

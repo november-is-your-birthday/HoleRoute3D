@@ -1037,19 +1037,14 @@ document.addEventListener("keydown", function (ev) {
 window.__lcPickJumper = __lcPickJumper;
 
 /* ------------------------------------------------------------------
- * v3.4.9：内测版标识
- * 这个 fork 是在上游 2.0.0 的压缩包上打补丁改出来的，功能没有经过完整验证，
- * 用户拿去焊板之前必须知道「软件可能是错的」。三处常驻 + 一次启动提示：
- *   1) 顶栏品牌名后面一枚红色「内测版」标签（见 apply_all.py Y1）
- *   2) 窗口标题带「内测版」（src/dist/index.html）
- *   3) 没有工程时的空面板上加一行红字
- *   4) 每次启动弹一条提示条 —— 提醒先导出工程留档再反馈
+ * v3.5.6：顶栏「透视」按钮
+ * 原来是一枚只有眼睛图标的方按钮（34×34），换成同位置的文字按钮。
+ * 文字按钮沿用 .icon-text-button 的既有配色与 hover/active 状态，
+ * 只把高度对齐到顶栏图标按钮的 32px，避免比邻居矮一截。
  * ------------------------------------------------------------------ */
-__lcStyleOnce("lc-beta-style",
-  ".lc-beta-badge{display:inline-block;margin-left:8px;padding:0 6px;border-radius:8px;" +
-  "background:#c0392b;color:#fff;font-size:10px;font-weight:700;line-height:16px;" +
-  "letter-spacing:.5px;vertical-align:middle;white-space:nowrap;" +
-  "box-shadow:0 0 0 1px rgba(255,255,255,.22) inset}");
+__lcStyleOnce("lc-header-text-button",
+  ".header-actions .icon-text-button{min-height:32px;padding:0 11px;border-radius:6px;" +
+  "font-size:12px;font-weight:600;letter-spacing:.02em;line-height:1}");
 
 setTimeout(function () {
   try {

@@ -1007,18 +1007,23 @@ src = rep(src,
           'onClick:()=>__lcSetRats(__lcRatsToggle()),children:"飞线层"})]})',
           'X2 toolbar drops transparency button, renames ratsnest')
 
-# =================================================================
-# v3.4.9：内测版标识（三处常驻 + 一次启动提示，提示与样式在 patch_v33_main.js 末尾）
-# 背景：这个 fork 是在上游压缩包上打补丁改的，用户拿去做板之前必须知道
-#       「软件可能是错的」，否则出了问题会先怀疑自己。
-# =================================================================
+# 3) 顶栏右侧那个「眼睛」图标按钮（透视）改成文字按钮，位置不变
+#    —— 图标没有文字时不好认，用户要求直接写字。
 src = rep(src,
-          'P.jsx("div",{className:"brand-title",children:"ProtoRoute 3D"})',
-          'P.jsxs("div",{className:"brand-title",children:["ProtoRoute 3D",'
-          'P.jsx("span",{className:"lc-beta-badge",'
-          'title:"内测版：功能仍在打磨，可能存在缺陷。关键工程请先导出 JSON 备份",'
-          'children:"内测版"})]})',
-          'Y1 header beta badge')
+          'P.jsx("button",{className:d&&d.isTransparentBoard?"icon-button active":"icon-button",'
+          'type:"button",title:"透视",onClick:()=>d&&d.onToggleTransparent&&d.onToggleTransparent(),'
+          'children:P.jsx($2,{size:18})})',
+          'P.jsx("button",{className:d&&d.isTransparentBoard?"icon-text-button active":"icon-text-button",'
+          'type:"button","aria-label":"透视板体，快捷键 T",'
+          'title:"透视板体：透过板体查看背面走线（快捷键 T）",'
+          'onClick:()=>d&&d.onToggleTransparent&&d.onToggleTransparent(),children:"透视"})',
+          'X3 header xray icon -> text button')
+
+# =================================================================
+# 内测版标识
+# v3.4.9 曾在顶栏品牌名右侧插过一枚红色「内测版」标签（Y1），
+# v3.5.6 按用户要求删除。其余位置（窗口标题、空工程提示、启动提示条）暂不变。
+# =================================================================
 src = rep(src,
           'P.jsx("p",{children:"创建工程后导入 KiCad 网表（.net），随后进入洞洞板布局与布线流程。"})',
           'P.jsx("p",{children:"创建工程后导入 KiCad 网表（.net），随后进入洞洞板布局与布线流程。"}),'
