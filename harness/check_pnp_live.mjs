@@ -1,6 +1,7 @@
 // 实机验收：元件库 NPN/PNP 条目 + 属性面板极性显示
 // 用法：node check_pnp_live.mjs   （需先启动带 --remote-debugging-port=9362 的实例）
 const PORT = process.env.CDP_PORT || 9362;
+import os from 'node:os';
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
 async function pageTarget() {
@@ -88,7 +89,7 @@ report.libShot = await (async () => {
 {
   const d = await call('Page.captureScreenshot', { format: 'png' });
   const fs = await import('fs');
-  fs.writeFileSync((process.env.TEMP || 'C:/Users/kai/AppData/Local/Temp') + '/pr3d-pnp-lib.png', Buffer.from(d.data, 'base64'));
+  fs.writeFileSync((process.env.TEMP || os.tmpdir()) + '/pr3d-pnp-lib.png', Buffer.from(d.data, 'base64'));
 }
 
 // 2) 点「TO-92 PNP（S8550）」→ 待放置 → 点板面落板
@@ -143,7 +144,7 @@ report.pnpPanel = await evaluate(`(() => {
 {
   const d = await call('Page.captureScreenshot', { format: 'png' });
   const fs = await import('fs');
-  fs.writeFileSync((process.env.TEMP || 'C:/Users/kai/AppData/Local/Temp') + '/pr3d-pnp-panel.png', Buffer.from(d.data, 'base64'));
+  fs.writeFileSync((process.env.TEMP || os.tmpdir()) + '/pr3d-pnp-panel.png', Buffer.from(d.data, 'base64'));
 }
 
 // 3) 再放一颗 SOT-23 NPN，验证 NPN 显示与 SOT-23 封装族
@@ -191,7 +192,7 @@ report.npnPanel = await evaluate(`(() => {
 {
   const d = await call('Page.captureScreenshot', { format: 'png' });
   const fs = await import('fs');
-  fs.writeFileSync((process.env.TEMP || 'C:/Users/kai/AppData/Local/Temp') + '/pr3d-pnp-npn.png', Buffer.from(d.data, 'base64'));
+  fs.writeFileSync((process.env.TEMP || os.tmpdir()) + '/pr3d-pnp-npn.png', Buffer.from(d.data, 'base64'));
 }
 
 console.log(JSON.stringify(report, null, 2));

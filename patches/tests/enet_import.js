@@ -160,7 +160,7 @@ assert(!/Array\.isArray\(jo\.components\)/.test(bundle) || bundle.indexOf('!Arra
   '用「components 是不是数组」区分工程文件和 enet');
 
 /* ---------- 7) 真实导出文件 ---------- */
-const real = 'C:/Users/kai/Desktop/Netlist_Schematic2_2026-11-15.enet';
+const real = process.env.PR3D_REAL_ENET || '';  // 设为本机立创导出的 .enet 路径后运行真实文件分支
 if (fs.existsSync(real)) {
   const obj = JSON.parse(fs.readFileSync(real, 'utf8'));
   const p = parse(obj, 'Netlist_Schematic2_2026-11-15.enet');

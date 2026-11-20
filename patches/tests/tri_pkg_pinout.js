@@ -164,7 +164,7 @@ assert(bundle.indexOf('||!!__lcPkgPresets[__lcPkgFamily(O)])') >= 0,
 assert(bundle.indexOf('未指定（按封装常见排布暂标）') >= 0, '下拉首项文案与实际行为一致');
 
 /* ---------- 7) 真实工程：v1.json 的 Q1 ---------- */
-const v1Path = 'C:/Users/kai/Desktop/v1.json';
+const v1Path = process.env.PR3D_V1_JSON || '';  // 本地 v1.json 路径
 if (fs.existsSync(v1Path)) {
   let pj = null;
   try { pj = JSON.parse(fs.readFileSync(v1Path, 'utf8')); } catch (e) { pj = null; }
@@ -200,7 +200,7 @@ if (fs.existsSync(v1Path)) {
 }
 
 /* ---------- 8) 真实 .enet：SOT-23 Q1 的基极必须在 C2/R3 节点 ---------- */
-const enetPath = 'C:/Users/kai/Desktop/Netlist_Schematic2_2026-11-15.enet';
+const enetPath = process.env.PR3D_REAL_ENET || '';  // 本地 .enet 导出路径
 if (fs.existsSync(enetPath)) {
   let en = null;
   try { en = JSON.parse(fs.readFileSync(enetPath, 'utf8')); } catch (e) { en = null; }
