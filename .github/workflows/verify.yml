@@ -34,6 +34,9 @@ jobs:
       - name: 应用主包修复场景验证
         run: node harness/review_verify.cjs
 
+      - name: 跳线数量与电气完整性对比
+        run: node harness/route-quality.cjs
+
       - name: 飞线层逻辑回归
         run: node harness/rats-check.js
 

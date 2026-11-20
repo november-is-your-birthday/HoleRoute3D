@@ -35,6 +35,7 @@ const TARGETS = CLI_TARGETS.length ? CLI_TARGETS : DEFAULT_TARGETS;
 const GLOBALS = new Set([
   'Math', 'JSON', 'Set', 'Map', 'WeakMap', 'WeakSet', 'Array', 'Object', 'String', 'Number',
   'Boolean', 'Date', 'Error', 'TypeError', 'RangeError', 'Promise', 'RegExp', 'Symbol', 'BigInt',
+  'Float64Array', 'Int32Array', 'Uint8Array',
   'parseInt', 'parseFloat', 'isNaN', 'isFinite', 'encodeURIComponent', 'decodeURIComponent',
   'encodeURI', 'decodeURI', 'structuredClone', 'queueMicrotask', 'requestAnimationFrame',
   'cancelAnimationFrame', 'setTimeout', 'clearTimeout', 'setInterval', 'clearInterval',

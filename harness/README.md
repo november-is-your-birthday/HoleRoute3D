@@ -40,6 +40,33 @@ node harness/run.js --save                   # 覆盖 baseline.json
 
 自动放置较慢是当前实现本身的特点（每个候选都要完整布一次线），不是 harness 的开销。
 
+## 跳线数量对比
+
+```bash
+node harness/route-quality.cjs
+node harness/route-quality.cjs --save=route-quality-results.json
+node harness/route-quality.cjs --previous=previous-results.json --save=route-quality-results.json
+```
+
+执行保留的原算法候选和当前真实主包布线，比较三个既有布局和六组固定种子网表；
+同时断言输入未被修改、跳线数量不增加、独立连通性校验及 DRC 全部通过。
+2026-11-20 深度优化后的九组结果为 **51 → 24 条跳线**，其中既有三个布局为 **3/9/22 → 1/4/11**。
+相对上一轮优化，九组为 **33 → 24**、三个固定布局为 **1/5/18 → 1/4/11**。
+传入 `--previous` 时另外断言跳线数量不高于上一轮；所有用例均检查单次布线低于一分钟。
+这是合成用例结果，不能直接代表所有实际工程。
+
+`patches/patch_routing.js` 是两份 bundle 共用的铜线优先优化实现。
+最终结果先比较 DRC 与未连通网络，再比较跳线数量，最后比较跳线长度、走锡长度和拐弯。
+因此 `metrics.js` 的加权分用于观察质量，不是新方案的第一选择标准。
+优化不移动元件，会保留传入的手工线路；多种网络顺序增加最终布线耗时。
+整体网络顺序最多搜索 40/16/4 次，随后对阻挡跳线的网络做最多 12 轮局部拆线重布，记录拥塞历史代价。
+最终布线从入口设置 54 秒搜索截止时间，覆盖原候选和深度寻路，保留最终校验余量；超大输入保留原算法候选。
+超时会保留已有线路和已经验证的最佳结果，未连通状态仍如实报告。算法参考与适配说明见 `docs/routing-algorithms.md`。
+
+worker 的 `pn(..., true)` 使用最终优化；自动放置内部的快速候选评估保留原实现，
+避免把多次搜索放大到每一个放置候选。主包/worker 对比使用这个最终模式。
+`baseline.json` 保留优化前的历史指标，`--compare` 可以继续观察与它的差异。
+
 ## 独立校验器
 
 ```bash
@@ -105,7 +132,7 @@ node harness/ablate.js
 ## 注意
 
 - `node patches/tests/review_workflows.js` 验证旧线路分块续接、稀疏脚数、加载/编辑/撤销与 LED 来源兼容规则；`node harness/review_verify.cjs` 验证上一轮修复场景。两者均执行真实主包业务函数，DOM 与状态提交环境由 `app-sandbox.cjs` 隔离提供，不代替桌面交互检查。
-- 主包对用户已有线路按物理连通块规划，worker 的放置评估没有旧线路入参；三个首次布线 fixture 另外验证主包与 worker 的指标一致。
+- 主包对用户已有线路按物理连通块规划，worker 的放置评估没有旧线路入参；三个首次布线 fixture 另外验证主包与 worker 最终模式的指标一致。
 - 主包 `Y4()` 与 worker `pn()` 是**两份同构实现**，改算法必须两处同步，否则放置评估与实际布线会不一致。
-- `baseline.p0.json` / `p1` / `p3` 是各阶段的存档，用于回溯；`baseline.json` 是当前基准。
+- `baseline.p0.json` / `p1` / `p3` 和 `baseline.json` 是历史阶段存档，用于回溯。
 - 打包前请确认 `node --check` 两个 bundle 都通过。

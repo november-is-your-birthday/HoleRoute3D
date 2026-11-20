@@ -1661,6 +1661,77 @@ src = rep(src,
           'if(at.key==="Escape"){B(void 0),O(void 0),w(void 0);return}',
           'F26 Esc cancels pending placement and route draft')
 
+prouting = io.open(os.path.join(HERE, 'patch_routing.js'), encoding='utf-8').read().strip()
+src = rep(src, 'function Y4(i,t,e=[],s=[],r=[],l,c=[]){',
+          'function __lcLegacyRouteMain(i,t,e=[],s=[],r=[],l,c=[],search){', 'RO1 preserve original main candidate')
+wk = rep(wk, 'function pn(e,t,n=[],i=[],r=[],o,s=[],T8){',
+         'function __lcLegacyRouteWorker(e,t,n=[],i=[],r=[],o,s=[],T8,search){', 'RO2 preserve original worker candidate')
+for target, signature, replacements in [
+    ('main', 'function __lcLegacyRouteMain(', [
+        ('const h=mO(t),', 'const h=__lcCopperLegacyBudget(mO(t),search),'),
+        ('w<V2;w+=1', 'w<V2&&!__lcCopperExpired(search);w+=1'),
+        ('W<T.length;W+=1', 'W<T.length&&!__lcCopperExpired(search);W+=1'),
+        ('if(b){try{__lcTight(i,t,e,b,x,c,r);', 'if(b&&!__lcCopperExpired(search)){try{__lcTight(i,t,e,b,x,c,r,search);')]),
+    ('worker', 'function __lcLegacyRouteWorker(', [
+        ('const c=Ln(t),', 'const c=__lcCopperLegacyBudget(Ln(t),search),'),
+        ('N<ce;N+=1', 'N<ce&&!__lcCopperExpired(search);N+=1'),
+        ('b<w.length;b+=1', 'b<w.length&&!__lcCopperExpired(search);b+=1'),
+        ('if(T8&&S){__lcTightW(e,t,n,S,I);', 'if(T8&&S&&!__lcCopperExpired(search)){__lcTightW(e,t,n,S,I,search);')]),
+    ('main', 'function h0(', [
+        ('for(;b.length>0;){w+=1,', 'for(;b.length>0;){if(s.__lcDeadline!==void 0&&w%128===0&&performance.now()>=s.__lcDeadline)break;w+=1,')]),
+    ('worker', 'function xe(', [
+        ('for(;S.length>0;){N+=1,', 'for(;S.length>0;){if(i.__lcDeadline!==void 0&&N%128===0&&performance.now()>=i.__lcDeadline)break;N+=1,')]),
+    ('main', 'function Q4(', [
+        ('M.length>0;', 'M.length>0&&(t.__lcDeadline===void 0||performance.now()<t.__lcDeadline);')]),
+    ('worker', 'function wn(', [
+        ('f.length>0;', 'f.length>0&&(t.__lcDeadline===void 0||performance.now()<t.__lcDeadline);')]),
+    ('main', 'function __lcTight(', [
+        ('jumpers,constraints){', 'jumpers,constraints,search){'),
+        ('h<list.length;h+=1', 'h<list.length&&!__lcCopperExpired(search);h+=1'),
+        ('{net:g.net},u,c,d,', '{net:g.net,__lcDeadline:search?.deadline},u,c,d,')]),
+    ('worker', 'function __lcTightW(', [
+        ('function __lcTightW(e,t,n,i,r){', 'function __lcTightW(e,t,n,i,r,search){'),
+        ('u<i.traces.length;u+=1', 'u<i.traces.length&&!__lcCopperExpired(search);u+=1'),
+        ('{net:l.net},c,s,a,', '{net:l.net,__lcDeadline:search?.deadline},c,s,a,')]),
+]:
+    code = src if target == 'main' else wk
+    start, end = fn_span(code, signature)
+    function_code = code[start:end]
+    for old, new in replacements:
+        function_code = rep(function_code, old, new, 'RO5 deadline ' + signature)
+    code = code[:start] + function_code + code[end:]
+    if target == 'main':
+        src = code
+    else:
+        wk = code
+main_routing = '''
+function Y4(board,endpoints,components=[],traces=[],constraints=[],progress,jumpers=[]){
+  const startedAt=performance.now(),search={startedAt,deadline:startedAt+54000};
+  const base=__lcLegacyRouteMain(board,endpoints,components,traces,constraints,progress,jumpers,search);
+  __lcCopperComplete(board,base,endpoints,components,J0,search,traces,jumpers);
+  return __lcCopperOptimize(board,endpoints,components,base,constraints,traces,jumpers,{
+    pins:TO,expand:Dr,tasks:points=>gO(mO(points)),validate:J0,
+    canJump:(from,to,rules)=>!wy(from,to,rules),
+    score:(definition,plan,points)=>iO(definition,plan,points,F2(definition,points,new Map,Py(definition)))
+  },progress,search);
+}
+'''
+worker_routing = '''
+function pn(board,endpoints,components=[],traces=[],constraints=[],progress,jumpers=[],tight){
+  const startedAt=performance.now(),search={startedAt,deadline:startedAt+54000};
+  const base=__lcLegacyRouteWorker(board,endpoints,components,traces,constraints,progress,jumpers,tight,tight?search:void 0);
+  if(!tight)return base;
+  __lcCopperComplete(board,base,endpoints,components,lt,search,traces,jumpers);
+  return __lcCopperOptimize(board,endpoints,components,base,constraints,traces,jumpers,{
+    pins:qn,expand:ke,tasks:points=>Hn(Ln(points)),validate:lt,
+    canJump:(from,to,rules)=>!at(from,to,rules),
+    score:(definition,plan,points)=>Pn(definition,plan,points,dt(definition,points,new Map,wt(definition)))
+  },progress,search);
+}
+'''
+src = rep(src, 'function __lcLegacyRouteMain(', prouting + '\n' + main_routing + '\nfunction __lcLegacyRouteMain(', 'RO4 main copper-first optimizer')
+wk = rep(wk, 'self.onmessage=', prouting + '\n' + worker_routing + '\nself.onmessage=', 'RO3 shared copper-first optimizer')
+
 if CHECK_ONLY:
     print('check only, not written')
     raise SystemExit(0)

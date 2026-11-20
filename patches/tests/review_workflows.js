@@ -108,7 +108,7 @@ test('主包首次布线与 worker 的三个既有基准一致', () => {
   const { api } = loadWorker();
   for (const fixture of buildFixtures().filter(entry => entry.components.every(component => component.mounted))) {
     const mainPlan = app.Y4(clone(fixture.board), clone(fixture.endpoints), clone(fixture.components));
-    const workerPlan = api.pn(clone(fixture.board), clone(fixture.endpoints), clone(fixture.components));
+    const workerPlan = api.pn(clone(fixture.board), clone(fixture.endpoints), clone(fixture.components), [], [], null, [], true);
     assert.deepEqual(plain(measure(mainPlan)), plain(measure(workerPlan)), fixture.name);
   }
 });
